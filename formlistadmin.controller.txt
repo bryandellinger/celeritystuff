@@ -1,0 +1,75 @@
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using CFF.CareCenterPortal.Forms.Business.Services.FormCentral;
+using CFF.CareCenterPortal.Forms.Models.Forms;
+using CFF.CareCenterPortal.Forms.Web.Authorization;
+using CFF.CareCenterPortal.Forms.Web.Controllers;
+using Microsoft.AspNetCore.Mvc;
+
+namespace CFF.CareCenterPortal.Forms.Web2.Controllers
+{
+    [Route("[controller]")]
+    public class FormListAdminController : IdentityController
+    {
+        private readonly IFormService _formService;
+        private readonly IPortalUserService _userService;
+
+        public FormListAdminController(IFormService formService, IPortalUserService userService)
+        {
+            _formService = formService;
+            _userService = userService;
+        }
+
+        public ActionResult Index()
+        {
+            var canEditFormTypes = _formService.CanEditFormTypes().Result;
+            ViewData["CanEditFormTypes"] = canEditFormTypes;
+
+            return View("Index");
+        }
+
+        [HttpGet("admin/{isHistory:bool}")]
+        public async Task<JsonResult> Admin(bool isHistory)
+        {
+            FormListAdminViewModel formListAdminViewModel = new FormListAdminViewModel();
+            formListAdminViewModel.IsHistory = isHistory;
+            if (isHistory)
+            {
+                var forms = await _formService.GetHistoricAdminFormsListAsync();
+                formListAdminViewModel.Forms = forms.ToList();
+            }
+            else
+            {
+                var forms = await _formService.GetAdminFormsListAsync();
+                formListAdminViewModel.Forms = forms.ToList();
+            }
+            formListAdminViewModel.Forms = formListAdminViewModel.Forms.OrderByDescending(x => x.SubmittedDate).ToList();
+            return Json(formListAdminViewModel);
+        }
+
+        [HttpGet("formtypes")]
+        public async Task<ActionResult> FormTypes()
+        {
+            var vm = await _formService.GetEditFormTypeListAsync();
+
+            if (!vm.FormTypes.Any())
+                throw new UnauthorizedAccessException();
+
+            return View(vm);
+        }
+
+        [HttpPost("saveformtypes")]
+        public async Task<ActionResult> SaveFormTypes(FormTypeAdminViewModel model)
+        {
+            var hasAccess = await _formService.CanEditFormTypes();
+
+            if (!hasAccess)
+                throw new UnauthorizedAccessException();
+
+            var result = await _formService.SaveAdminFormTypeListAsync(model);
+
+            return RedirectToAction("FormTypes");
+        }
+    }
+}

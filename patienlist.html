@@ -1,0 +1,111 @@
+
+
+<div ng-hide="vm.patientsLoaded">Loading Patients...  <i class="fa fa-spinner fa-spin"></i></div>
+
+<div class="alert alert-danger alert-dismissible" ng-show="vm.errorOccuredLoadingPatients" role="alert">
+    <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+    <strong>Problem Loading Patients!</strong>  {{vm.headerService.errors[0]}} 
+    <p><a href="@Url.Action("", "BeInCharge")" class="alert-link">Reload / Try Again</a></p>
+
+
+</div>
+
+<div class="col-sm-6 col-md-4" ng-repeat="patient in vm.patientlist | orderBy: vm.headerService.currentSort.orderBy:vm.headerService.currentSort.sortDescending
+     | filter :
+     {
+        'PatientFullName' : vm.headerService.searchText,
+        'Archived' : vm.headerService.Archived,
+        'PhysicianID' : vm.headerService.selectedPhysician.PhysicianID
+     }">
+
+    <div class="bic-card" ng-style="{ opacity: patient.Archived ? '.7' : '1' }">
+        <div class="clickable-area" ng-click="vm.goToDetails(patient)">
+            <div class="row top-row">
+                <div class="avatar col-xs-3">
+                    <div class="noimg" ng-class="patient.Archived ? 'archived-background' : 'active-background'">{{patient.FirstName | limitTo: 1}}{{patient.LastName | limitTo: 1}}</div>
+                </div>
+                <div class="col-xs-9 top-right">
+                    <h4>{{patient.FirstName}} {{patient.LastName}}</h4>
+                    <div class="rating">
+                        <span ng-repeat="sessionStatus in vm.patientDataTransformService.getSessionStatusList(patient) track by $index">
+                            <i class="fa fa-circle"
+                               ng-class="vm.patientDataTransformService.getSessionStatusIconColor(sessionStatus,false)"
+                               aria-hidden="true"></i>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="row middle-content text-center">
+                <strong>
+                    <i class="fa fa-stethoscope"></i>
+                    {{patient.PhysicianName }}
+                </strong>
+            </div>
+            <div class="row text-center" ng-class="vm.getProgamStatusTextColor(patient.Status)"
+                 ng-show="patient.Status" >
+                {{patient.Status}}
+            </div>
+            <div ng-repeat="item in patient.sessions" class="row text-center" ng-hide="vm.getSessionIsHidden(item) || patient.Status">
+                {{item.name}}: 
+                <span ng-class="vm.getSessionDateColor(item)">
+                    {{vm.sessionIsInProgress(item.name, patient) ? 'In Progress' : item.date | date: 'M/d/yy'}} 
+                </span>
+            </div>
+          
+            <div class="row spacer"></div>
+            <div class="text-center last-log-on"> Last Log On: {{vm.getLastLoggedOnText(patient.derivedLastActivitySeconds)}}  </div>
+        </div>
+        <div class="row footer">
+            <div class="btn-group btn-group-justified" role="group" aria-label="...">
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn" ng-click="vm.goToDetails(patient)" ng-class="patient.Archived ? 'btn-archived' : 'btn-primary'">
+                        <svg fill="#FFFFFF" class="icon icon--inline" aria-hidden="true">
+                            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-details"></use>
+                        </svg>
+                        Details
+                    </button>
+                </div>
+                <div class="btn-group" role="group" ng-if="patient.Status.indexOf('Invite')  === 0  && !patient.Archived" >
+                    <button type="button" class="btn" ng-click="vm.resendInvitation(patient)" ng-class="patient.Archived ? 'btn-archived' : 'btn-primary'">
+                        <svg fill="#FFFFFF" class="icon icon--inline" aria-hidden="true">
+                            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-send"></use>
+                        </svg>
+                        Re-Invite
+                    </button>
+                </div>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn " ng-show="patient.Archived" 
+                            data-toggle="confirmation" 
+                            data-popout="true"
+                            data-singleton ="true"
+                            data-id="{{patient.ID}}"
+                            data-value="{{!patient.Archived}}"
+                            data-title="Activate {{patient.FirstName}} {{patient.LastName}}?"
+                            ng-class="patient.Archived ? 'btn-archived' : 'btn-primary'">
+                        <svg fill="#FFFFFF" class="icon icon--inline" aria-hidden="true">
+                            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-archive"></use>
+                        </svg>
+                    
+                        Archived
+                    </button>
+                    <button ng-hide="'true'" id="{{patient.ID}}" ng-click="vm.setArchived(patient, !(patient.Archived))"></button>
+                    <button type="button" class="btn" 
+                             data-toggle="confirmation" 
+                             data-singleton ="true"
+                            data-popout="true"
+                            data-id="{{patient.ID}}"
+                            data-title="Archive {{patient.FirstName}} {{patient.LastName}}?"
+                            data-value="{{!patient.Archived}}"
+                            ng-show="!patient.Archived" ng-class="patient.Archived ? 'btn-archived' : 'btn-primary'">
+                        <svg fill="#FFFFFF" class="icon icon--inline" aria-hidden="true">
+                            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-unarchive"></use>
+                        </svg>
+                        Active
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+

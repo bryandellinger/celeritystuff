@@ -1,0 +1,548 @@
+using CFF.FormCentral.Data.Entities;
+using CFF.FormCentral.Data.Repositories.Interfaces;
+using System.Linq;
+using System;
+using System.Threading.Tasks;
+using System.Threading;
+using CFF.FormCentral.Contract.Models;
+using System.Data.Entity;
+using CFF.FormCentral.Contract.LookupValues;
+using System.Collections.Generic;
+using CFF.FormCentral.Contract.Responses;
+using CFF.FormCentral.Contract.Requests;
+
+namespace CFF.FormCentral.Data.Repositories
+{
+    public class FormRepository : IFormRepository
+    {
+        private readonly IFormCentralContext _context;
+
+        private const string _titleQuestionAnnotation = "TitleQuestion";
+
+        public FormRepository(IFormCentralContext context)
+        {
+            _context = context;
+        }
+
+        public IQueryable<FormDto> Get()
+        {
+            return (from formTypes in _context.FormTypes
+                    join form in _context.Forms on formTypes.FormTypeId equals form.FormTypeId into formGroup
+                    from form in formGroup.DefaultIfEmpty()
+                    join statuses in _context.FormStatus on form.FormStatusId equals statuses.FormStatusId into formStatusGroup
+                    from statuses in formStatusGroup.DefaultIfEmpty()
+                    join orgs in _context.Organizations on form.OrganizationId equals orgs.OrganizationId into orgGroup
+                    from orgs in orgGroup.DefaultIfEmpty()
+                    join ccp in _context.CareCenterPrograms on orgs.OrganizationId equals ccp.OrganizationId into ccpGroup
+                    from ccp in ccpGroup.DefaultIfEmpty()
+                    join pt in _context.ProgramTypes on ccp.ProgramTypeId equals pt.ProgramTypeId into ptGroup
+                    from pt in ptGroup.DefaultIfEmpty()
+                    let titleAddition = form.Responses.FirstOrDefault(x => x.SectionQuestion.QuestionStore.FormTypeQuestionAnnotations.Any(y => y.FormTypeQuestionAnnotationGroupType.GroupName == _titleQuestionAnnotation))
+                    select new FormDto
+                    {
+                        Id = form.FormId,
+                        TypeId = formTypes.FormTypeId,
+                        TypeName = formTypes.Name,
+                        Description = titleAddition == null || titleAddition.Response1 == null ? formTypes.Description : titleAddition.Response1,
+                        Status = statuses.Name,
+                        StatusId = form.FormStatusId,
+                        AvailableDate = formTypes.StartDate,
+                        DueDate = formTypes.EndDate,
+                        StartedDate = form.CreatedDate,
+                        OrganizationId = form.OrganizationId,
+                        CareCenterProgramName = (orgs == null) ? null : orgs.OrganizationDisplayName,
+                        CareCenterProgramTypeName = (pt == null) ? null : pt.ProgramTypeShortName,
+                        CareCenterProgramNumber = (ccp == null) ? null : ccp.ProgramNumber,
+                        LockExpiration = form.LockExpiration,
+                        SubmittedDate = form.SubmittedDate,
+                        SubmittedBy = form.SubmittedBy,
+                        Investigator = new InvestigatorDto()
+                        {
+                            UserGuid = form.LastEditedBy
+                        },
+                        IsPublic = formTypes.IsPublic
+                    }).AsQueryable();
+        }
+
+        public IQueryable<FormTypeAdminDto> GetAdminFormTypes(Guid userGuid)
+        {
+            return (from ft in _context.FormTypes
+                    join fta in _context.FormTypeAdmins on ft.FormTypeId equals fta.FormTypeId into ftGroup
+                    from ftg in ftGroup.DefaultIfEmpty()
+                    where ftg.UserId == userGuid
+                    select new FormTypeAdminDto
+                    {
+                        Id = ft.FormTypeId,
+                        Name = ft.Name,
+                        Description = ft.Description,
+                        CreatedDate = ft.CreatedDate,
+                        CreatedBy = ft.CreatedBy,
+                        StartDate = ft.StartDate,
+                        EndDate = ft.EndDate,
+                        ModifiedBy = ft.ModifiedBy,
+                        ModifiedDate = ft.ModifiedDate,
+                        IsAdvertised = ft.IsAdvertised,
+                        CanEditFormType  = ftg.CanEditFormType,
+                        HasAdminListAccess = ftg.HasAdminListAccess ?? false,
+                        IsEmailRecipient = ftg.IsEmailRecipient ?? false,
+                        UserId = ftg.UserId
+                    }).AsQueryable();
+        }
+
+        public async Task<int> SaveFormTypes(SaveFormTypeListRequest saveRequest, Guid userGuid)
+        {
+            var formTypeIds = saveRequest.FormTypes.Select(x => x.Id).ToArray();
+            var dataToBeUpdated = await (from ft in _context.FormTypes
+                                         where formTypeIds.Contains(ft.FormTypeId)
+                                         select ft).ToListAsync();
+
+            foreach (var item in dataToBeUpdated)
+            {
+                var newData = saveRequest.FormTypes.Where(x => x.Id == item.FormTypeId).FirstOrDefault();
+                item.StartDate = newData.StartDate;
+                item.EndDate = newData.EndDate;
+            }
+
+            return await SaveChangesAsync();
+        }
+
+        public IQueryable<FormDto> GetAdmin(Guid userGuid, params int[] formStatuses)
+        {
+            return (from formTypes in _context.FormTypes
+                    join form in _context.Forms on formTypes.FormTypeId equals form.FormTypeId into formGroup
+                    from form in formGroup.DefaultIfEmpty()
+                    join statuses in _context.FormStatus on form.FormStatusId equals statuses.FormStatusId into formStatusGroup
+                    from statuses in formStatusGroup.DefaultIfEmpty()
+                    join orgs in _context.Organizations on form.OrganizationId equals orgs.OrganizationId into orgGroup
+                    from orgs in orgGroup.DefaultIfEmpty()
+                    join ccp in _context.CareCenterPrograms on orgs.OrganizationId equals ccp.OrganizationId into ccpGroup
+                    from ccp in ccpGroup.DefaultIfEmpty()
+                    join pt in _context.ProgramTypes on ccp.ProgramTypeId equals pt.ProgramTypeId into ptGroup
+                    from pt in ptGroup.DefaultIfEmpty()
+                    let titleAddition = form.Responses.FirstOrDefault(x => x.SectionQuestion.QuestionStore.FormTypeQuestionAnnotations.Any(y => y.FormTypeQuestionAnnotationGroupType.GroupName == _titleQuestionAnnotation))
+                    where formTypes.FormTypeAdmins.Any(x => x.UserId == userGuid && x.HasAdminListAccess.HasValue && x.HasAdminListAccess.Value) &&
+                        formStatuses.Contains(form.FormStatusId)
+                    select new FormDto
+                    {
+                        Id = form.FormId,
+                        TypeId = formTypes.FormTypeId,
+                        TypeName = formTypes.Name,
+                        Description = titleAddition == null || titleAddition.Response1 == null ? formTypes.Description : titleAddition.Response1,
+                        Status = statuses.Name,
+                        StatusId = form.FormStatusId,
+                        AvailableDate = formTypes.StartDate,
+                        DueDate = formTypes.EndDate,
+                        StartedDate = form.CreatedDate,
+                        OrganizationId = form.OrganizationId,
+                        CareCenterProgramName = (orgs == null) ? null : orgs.OrganizationDisplayName,
+                        CareCenterProgramTypeName = (pt == null) ? null : pt.ProgramTypeShortName,
+                        CareCenterProgramNumber = (ccp == null) ? null : ccp.ProgramNumber,
+                        LockExpiration = form.LockExpiration,
+                        SubmittedDate = form.SubmittedDate,
+                        SubmittedBy = form.SubmittedBy,
+                        Investigator = new InvestigatorDto()
+                        {
+                            UserGuid = form.LastEditedBy
+                        },
+                        IsPublic = formTypes.IsPublic
+                    })
+                    .OrderByDescending(x => x.StatusId)
+                    .ThenByDescending(x => x.StartedDate)
+                    .AsQueryable();
+        }
+
+        public async Task<int> CreateAsync(int formTypeId, Guid userGuid, int organizationId, int? initialFormStatusId)
+        {
+            var formType = _context.FormTypes.Find(formTypeId);
+
+            var newForm = new Form()
+            {
+                FormTypeId = formTypeId,
+                FormStatusId = initialFormStatusId ?? FormStatuses.InProgress.Id,
+                CreatedDate = DateTime.Now,
+                LastEditedBy = userGuid,
+                LockExpiration = DateTime.Now.AddMinutes(60),
+                OrganizationId = organizationId
+            };
+
+            if (formType.IsPublic)
+            {
+                if (organizationId != 0) throw new ApplicationException("This form cannot be associated to an organization.");
+                newForm.OrganizationId = null;
+                newForm.UserID = userGuid;
+            }
+            else
+            {
+                if (organizationId == 0) throw new ApplicationException("This form must be associated to an organization.");
+            }
+
+            _context.Forms.Add(newForm);
+            await SaveChangesAsync();
+
+            return newForm.FormId;
+        }
+
+        public async Task DeleteByFormId(int formId, Guid userGuid)
+        {
+            var form = _context.Forms.Include(x => x.FormType)
+                                     .Include(x => x.Responses.Select(r => r.ResponseFileUploads))
+                                     .Include(x => x.FormSectionInclusions)
+                                     .Include(x => x.FormStatus)
+                                     .Where(f => f.FormId == formId)
+                                     .First();
+
+            if (!form.FormType.IsPublic
+                || (form.UserID != userGuid)
+                || (form.FormStatus.Name != FormStatuses.InProgress.Name && form.FormStatus.Name != FormStatuses.ConsentPending.Name)
+               )
+            {
+                throw new ApplicationException("This action is not supported.");
+            }
+
+            _context.Responses.RemoveRange(form.Responses);
+            _context.ResponseFileUploads.RemoveRange(form.Responses.SelectMany(r => r.ResponseFileUploads));
+            _context.FormSectionInclusions.RemoveRange(form.FormSectionInclusions);
+            _context.Forms.Remove(form);
+
+            await SaveChangesAsync();
+
+            return;
+
+        }
+
+        /// <summary>
+        /// Pulls a list of all available form types and forms that have already been started
+        /// if the users associated organizations are not on excluded on the form distribution list.
+        /// </summary>
+        /// <param name="contactId"></param>
+        /// <returns></returns>
+        public IQueryable<FormDto> GetActiveOrganizationFormsByContactId(int contactId)
+        {
+            var activeForms = (from ft in _context.FormTypes
+                               from oc in _context.OrganizationContacts
+                               join ocrt in _context.OrganizationContactRoleTypes on oc.OrganizationContactRoleTypeId equals ocrt.OrganizationContactRoleTypeId
+                               join ccp in _context.CareCenterPrograms on oc.OrganizationId equals ccp.OrganizationId
+                               join o in _context.Organizations on oc.OrganizationId equals o.OrganizationId
+                               join pt in _context.ProgramTypes on ccp.ProgramTypeId equals pt.ProgramTypeId
+                               join f in _context.Forms on new { FormTypeId = ft.FormTypeId, OrganizationId = (int?)o.OrganizationId }
+                                       equals new { FormTypeId = f.FormTypeId, OrganizationId = (int?)f.OrganizationId } into formGroup
+                               from form in formGroup.DefaultIfEmpty()
+                               join s in _context.FormStatus on form.FormStatusId equals s.FormStatusId into statusGroup
+                               from s in statusGroup.DefaultIfEmpty()
+                               join fe in _context.FormTypeDistributions
+                                 on new { OrganizationId = o.OrganizationId, FormTypeId = ft.FormTypeId }
+                                 equals new { OrganizationId = fe.OrganizationId, FormTypeId = fe.FormTypeId } into orgExclusionsGroup
+                               from fe in orgExclusionsGroup.DefaultIfEmpty()
+                               join fi in _context.FormTypeDistributions
+                                 on new { OrganizationId = o.OrganizationId, FormTypeId = ft.FormTypeId }
+                                 equals new { OrganizationId = fi.OrganizationId, FormTypeId = fi.FormTypeId } into orgInclusionsGroup
+                               from fi in orgInclusionsGroup.DefaultIfEmpty()
+                               where oc.ContactId == contactId &&
+                                     (fe.Exclusion == false && fe.Inclusion == true) &&
+                                     ocrt.OrganizationContactRoleTypeGroupId == OrganizationContactRoleTypeGroup.Clinical &&
+                                     oc.IsActive
+                               select new FormDto
+                               {
+                                   Id = (form == null) ? null : (int?)form.FormId,
+                                   Status = (s == null ? FormStatuses.NotStarted.Name : s.Name),
+                                   StatusId = (form == null) ? null : (int?)form.FormStatusId,
+                                   StartedDate = (form == null) ? null : (DateTime?)form.CreatedDate,
+                                   TypeId = ft.FormTypeId,
+                                   OrganizationId = ccp.OrganizationId,
+                                   TypeName = ft.Name,
+                                   Description = ft.Description,
+                                   AvailableDate = ft.StartDate,
+                                   DueDate = ft.EndDate,
+                                   CareCenterProgramName = o.OrganizationDisplayName,
+                                   CareCenterProgramTypeName = pt.ProgramTypeShortName,
+                                   CareCenterProgramNumber = ccp.ProgramNumber,
+                                   Investigator = new InvestigatorDto()
+                                   {
+                                       UserGuid = (form == null) ? null : form.LastEditedBy
+                                   },
+                                   LockExpiration = (form == null) ? null : form.LockExpiration
+                               }).Distinct()
+                                 .Where(s => s.StatusId != FormStatuses.ClosedByAdmin.Id)
+                                 .OrderByDescending(s => s.StatusId)
+                                 .ThenByDescending(x => x.DueDate);
+
+            return activeForms;
+
+        }
+
+		public IQueryable<FormDto> GetAllActiveOrganizationForms()
+		{
+			var activeForms = (from ft in _context.FormTypes
+							   from oc in _context.OrganizationContacts
+							   join ocrt in _context.OrganizationContactRoleTypes on oc.OrganizationContactRoleTypeId equals ocrt.OrganizationContactRoleTypeId
+							   join ccp in _context.CareCenterPrograms on oc.OrganizationId equals ccp.OrganizationId
+							   join o in _context.Organizations on oc.OrganizationId equals o.OrganizationId
+							   join pt in _context.ProgramTypes on ccp.ProgramTypeId equals pt.ProgramTypeId
+							   join f in _context.Forms on new { FormTypeId = ft.FormTypeId, OrganizationId = (int?)o.OrganizationId }
+									   equals new { FormTypeId = f.FormTypeId, OrganizationId = (int?)f.OrganizationId } into formGroup
+							   from form in formGroup.DefaultIfEmpty()
+							   join s in _context.FormStatus on form.FormStatusId equals s.FormStatusId into statusGroup
+							   from s in statusGroup.DefaultIfEmpty()
+							   join fe in _context.FormTypeDistributions
+								 on new { OrganizationId = o.OrganizationId, FormTypeId = ft.FormTypeId }
+								 equals new { OrganizationId = fe.OrganizationId, FormTypeId = fe.FormTypeId } into orgExclusionsGroup
+							   from fe in orgExclusionsGroup.DefaultIfEmpty()
+							   join fi in _context.FormTypeDistributions
+								 on new { OrganizationId = o.OrganizationId, FormTypeId = ft.FormTypeId }
+								 equals new { OrganizationId = fi.OrganizationId, FormTypeId = fi.FormTypeId } into orgInclusionsGroup
+							   from fi in orgInclusionsGroup.DefaultIfEmpty()
+							   where oc.ContactId > 0 &&
+									 (fe.Exclusion == false && fe.Inclusion == true) &&
+									 ocrt.OrganizationContactRoleTypeGroupId == OrganizationContactRoleTypeGroup.Clinical &&
+									 oc.IsActive
+							   select new FormDto
+							   {
+								   Id = (form == null) ? null : (int?)form.FormId,
+								   Status = (s == null ? FormStatuses.NotStarted.Name : s.Name),
+								   StatusId = (form == null) ? null : (int?)form.FormStatusId,
+								   StartedDate = (form == null) ? null : (DateTime?)form.CreatedDate,
+								   TypeId = ft.FormTypeId,
+								   OrganizationId = ccp.OrganizationId,
+								   TypeName = ft.Name,
+								   Description = ft.Description,
+								   AvailableDate = ft.StartDate,
+								   DueDate = ft.EndDate,
+								   CareCenterProgramName = o.OrganizationDisplayName,
+								   CareCenterProgramTypeName = pt.ProgramTypeShortName,
+								   CareCenterProgramNumber = ccp.ProgramNumber,
+								   Investigator = new InvestigatorDto()
+								   {
+									   UserGuid = (form == null) ? null : form.LastEditedBy
+								   },
+								   LockExpiration = (form == null) ? null : form.LockExpiration
+							   }).Distinct()
+								 .Where(s => s.StatusId != FormStatuses.ClosedByAdmin.Id)
+								 .OrderByDescending(s => s.StatusId)
+								 .ThenByDescending(x => x.DueDate);
+
+			return activeForms;
+
+		}
+
+		public IQueryable<FormDto> GetActiveOrganizationFormsByContactIdHeirachical(int contactId)
+        {
+            var forms = GetActiveOrganizationFormsByContactId(contactId);
+            var formOrgIds = forms.Select(x => x.OrganizationId).ToList();
+
+            var orgContacts = _context.OrganizationContacts.Include(x => x.OrganizationContactRoleType)
+                                .Include(x => x.Organization.CareCenterPrograms.Select(y => y.CoreCenter.CareCenterPrograms))
+                                .Include(x => x.Organization.CoreCenterPrograms.Select(y => y.Organization.CareCenterPrograms))
+                                .Where(x => x.ContactId == contactId && x.OrganizationContactRoleType.OrganizationContactRoleTypeGroupId == 2).ToList();
+
+            var directorIds = new List<int> { OrganizationContactRoleTypeIds.DirectorId,
+                                              OrganizationContactRoleTypeIds.CoDirectorId,
+                                              OrganizationContactRoleTypeIds.AssocDirectorId };
+
+            if (!formOrgIds.Any() || !orgContacts.Any()) return forms;
+
+            var orgs = orgContacts.Where(x => directorIds.Contains(x.OrganizationContactRoleType.OrganizationContactRoleTypeId) && x.Organization.OrganizationTypeId == 19)
+                .SelectMany(x => x.Organization.CoreCenterPrograms.Select(y => y.Organization).Where(y => !formOrgIds.Contains(y.OrganizationId)));
+
+            if (!orgs.Any()) return forms;
+
+            var orgIds = orgs.Select(x => x.OrganizationId).ToList();
+
+            var activeForms = (from ft in _context.FormTypes
+                               from oc in _context.OrganizationContacts
+                               join ocrt in _context.OrganizationContactRoleTypes on oc.OrganizationContactRoleTypeId equals ocrt.OrganizationContactRoleTypeId
+                               join ccp in _context.CareCenterPrograms on oc.OrganizationId equals ccp.OrganizationId
+                               join o in _context.Organizations.Where(x => orgIds.Contains(x.OrganizationId)) on oc.OrganizationId equals o.OrganizationId
+                               join pt in _context.ProgramTypes on ccp.ProgramTypeId equals pt.ProgramTypeId
+                               join f in _context.Forms on new { FormTypeId = ft.FormTypeId, OrganizationId = (int?)o.OrganizationId }
+                                       equals new { FormTypeId = f.FormTypeId, OrganizationId = (int?)f.OrganizationId } into formGroup
+                               from form in formGroup.DefaultIfEmpty()
+                               join s in _context.FormStatus on form.FormStatusId equals s.FormStatusId into statusGroup
+                               from s in statusGroup.DefaultIfEmpty()
+                               join fe in _context.FormTypeDistributions
+                                 on new { OrganizationId = o.OrganizationId, FormTypeId = ft.FormTypeId }
+                                 equals new { OrganizationId = fe.OrganizationId, FormTypeId = fe.FormTypeId } into orgExclusionsGroup
+                               from fe in orgExclusionsGroup.DefaultIfEmpty()
+                               join fi in _context.FormTypeDistributions
+                                 on new { OrganizationId = o.OrganizationId, FormTypeId = ft.FormTypeId }
+                                 equals new { OrganizationId = fi.OrganizationId, FormTypeId = fi.FormTypeId } into orgInclusionsGroup
+                               from fi in orgInclusionsGroup.DefaultIfEmpty()
+                               where (fe.Exclusion == false && fe.Inclusion == true) &&
+                                     ocrt.OrganizationContactRoleTypeGroupId == OrganizationContactRoleTypeGroup.Clinical &&
+                                     oc.IsActive
+                               select new FormDto
+                               {
+                                   Id = (form == null) ? null : (int?)form.FormId,
+                                   Status = (s == null ? FormStatuses.NotStarted.Name : s.Name),
+                                   StatusId = (form == null) ? null : (int?)form.FormStatusId,
+                                   StartedDate = (form == null) ? null : (DateTime?)form.CreatedDate,
+                                   TypeId = ft.FormTypeId,
+                                   OrganizationId = ccp.OrganizationId,
+                                   TypeName = ft.Name + " (For Center Director Oversight Only)",
+                                   Description = ft.Description,
+                                   AvailableDate = ft.StartDate,
+                                   DueDate = ft.EndDate,
+                                   CareCenterProgramName = o.OrganizationDisplayName,
+                                   CareCenterProgramTypeName = pt.ProgramTypeShortName,
+                                   CareCenterProgramNumber = ccp.ProgramNumber,
+                                   Investigator = new InvestigatorDto()
+                                   {
+                                       UserGuid = (form == null) ? null : form.LastEditedBy
+                                   },
+                                   LockExpiration = (form == null) ? null : form.LockExpiration
+                               }).Distinct()
+                                 .Where(s => s.StatusId != FormStatuses.ClosedByAdmin.Id)
+                                 .OrderByDescending(s => s.StatusId)
+                                 .ThenByDescending(x => x.DueDate);
+
+            return forms.Union(activeForms).OrderByDescending(s => s.StatusId).ThenByDescending(x => x.DueDate);
+        }
+
+        public IQueryable<FormDto> GetUserForms(Guid userId)
+        {
+            var activeForms = (from ft in _context.FormTypes
+                               join f in _context.Forms on new { FormTypeId = ft.FormTypeId }
+                                       equals new { FormTypeId = f.FormTypeId } into formGroup
+                               from form in formGroup.DefaultIfEmpty()
+                               join s in _context.FormStatus on form.FormStatusId equals s.FormStatusId into statusGroup
+                               from s in statusGroup.DefaultIfEmpty()
+                               let titleAddition = form.Responses.FirstOrDefault(x => x.SectionQuestion.QuestionStore.FormTypeQuestionAnnotations.Any(y => y.FormTypeQuestionAnnotationGroupType.GroupName == _titleQuestionAnnotation))
+                               where form.UserID == userId
+                               select new FormDto
+                               {
+                                   Id = (form == null) ? null : (int?)form.FormId,
+                                   Status = (s == null ? FormStatuses.NotStarted.Name : s.Name),
+                                   StatusId = (form == null) ? null : (int?)form.FormStatusId,
+                                   StartedDate = (form == null) ? null : (DateTime?)form.CreatedDate,
+                                   TypeId = ft.FormTypeId,
+                                   OrganizationId = null,
+                                   TypeName = ft.Name,
+                                   Description = titleAddition == null || titleAddition.Response1 == null ? ft.Description : titleAddition.Response1,
+                                   AvailableDate = ft.StartDate,
+                                   DueDate = ft.EndDate,
+                                   CareCenterProgramName = null,
+                                   CareCenterProgramTypeName = null,
+                                   CareCenterProgramNumber = null,
+                                   Investigator = new InvestigatorDto()
+                                   {
+                                       UserGuid = (form == null) ? null : form.LastEditedBy
+                                   },
+                                   LockExpiration = (form == null) ? null : form.LockExpiration,
+                                   IsPublic = ft.IsPublic,
+                                   UserId = (form == null) ? null : form.UserID
+                               }).Distinct()
+                                 .Where(s => s.StatusId != FormStatuses.ClosedByAdmin.Id)
+                                 .OrderByDescending(s => s.StatusId)
+                                 .ThenByDescending(x => x.StartedDate);
+
+
+            return activeForms;
+        }
+
+
+		public IQueryable<FormDto> GetAllUserForms()
+		{
+			var activeForms = (from ft in _context.FormTypes
+							   join f in _context.Forms on new { FormTypeId = ft.FormTypeId }
+									   equals new { FormTypeId = f.FormTypeId } into formGroup
+							   from form in formGroup.DefaultIfEmpty()
+							   join s in _context.FormStatus on form.FormStatusId equals s.FormStatusId into statusGroup
+							   from s in statusGroup.DefaultIfEmpty()
+							   let titleAddition = form.Responses.FirstOrDefault(x => x.SectionQuestion.QuestionStore.FormTypeQuestionAnnotations.Any(y => y.FormTypeQuestionAnnotationGroupType.GroupName == _titleQuestionAnnotation))
+							   where form.UserID != null
+							   select new FormDto
+							   {
+								   Id = (form == null) ? null : (int?)form.FormId,
+								   Status = (s == null ? FormStatuses.NotStarted.Name : s.Name),
+								   StatusId = (form == null) ? null : (int?)form.FormStatusId,
+								   StartedDate = (form == null) ? null : (DateTime?)form.CreatedDate,
+								   TypeId = ft.FormTypeId,
+								   OrganizationId = null,
+								   TypeName = ft.Name,
+								   Description = titleAddition == null || titleAddition.Response1 == null ? ft.Description : titleAddition.Response1,
+								   AvailableDate = ft.StartDate,
+								   DueDate = ft.EndDate,
+								   CareCenterProgramName = null,
+								   CareCenterProgramTypeName = null,
+								   CareCenterProgramNumber = null,
+								   Investigator = new InvestigatorDto()
+								   {
+									   UserGuid = (form == null) ? null : form.LastEditedBy
+								   },
+								   LockExpiration = (form == null) ? null : form.LockExpiration,
+								   IsPublic = ft.IsPublic,
+								   UserId = (form == null) ? null : form.UserID
+							   }).Distinct()
+								 .Where(s => s.StatusId != FormStatuses.ClosedByAdmin.Id)
+								 .OrderByDescending(s => s.StatusId)
+								 .ThenByDescending(x => x.StartedDate);
+
+
+			return activeForms;
+		}
+
+		public IQueryable<Entities.FormStatus> GetStatuses(int[] formStatusesToInclude)
+        {
+            return (from status in _context.FormStatus
+                    where (formStatusesToInclude.Contains(status.FormStatusId))
+                    select status).AsQueryable();
+        }
+
+
+        public IQueryable<FormTypeDto> GetFormTypes()
+        {
+            return (from ft in _context.FormTypes
+                    select new FormTypeDto()
+                    {
+                        Id = ft.FormTypeId,
+                        Name = ft.Name,
+                        Description = ft.Description,
+                        CreatedDate = ft.CreatedDate,
+                        CreatedBy = ft.CreatedBy,
+                        StartDate = ft.StartDate,
+                        EndDate = ft.EndDate,
+                        ModifiedBy = ft.ModifiedBy,
+                        ModifiedDate = ft.ModifiedDate,
+                        IsAdvertised = ft.IsAdvertised
+                    }).AsQueryable();
+        }
+
+        public Task<int> SaveChangesAsync()
+        {
+            return _context.SaveChangesAsync(CancellationToken.None);
+        }
+
+        public IQueryable<Form> GetFormById(int formId)
+        {
+            return (from form in _context.Forms
+                    where form.FormId == formId
+                    select form);
+        }
+
+        public async Task AddSectionInclusions(int startedFormId, List<int> includedSectionIds)
+        {
+            var formSectionInclusions = (from s in includedSectionIds
+                                         select new FormSectionInclusion()
+                                         {
+                                             FormId = startedFormId,
+                                             SectionId = (short)s
+                                         });
+
+            _context.FormSectionInclusions.AddRange(formSectionInclusions);
+            await SaveChangesAsync();
+        }
+
+        public async Task AddQuestionDefaults(int formId, Guid userGuid)
+        {
+            var form = _context.Forms.Include(x => x.FormType.Sections.Select(y => y.SectionQuestions.Select(z => z.SectionQuestionAnswerDefaults.Select(q => q.QuestionAnswerChoice)))).Single(x => x.FormId == formId);
+            foreach (var sqDefault in form.FormType.Sections.SelectMany(x => x.SectionQuestions).SelectMany(x => x.SectionQuestionAnswerDefaults))
+            {
+                var response = new Response { FormId = form.FormId, SectionQuestionId = sqDefault.SectionQuestionId, RespondentGuid = userGuid };
+                //Currently does not support response groups
+                response.Response1 = sqDefault.QuestionAnswerChoice == null ? sqDefault.Response : sqDefault.QuestionAnswerChoice.Choice;
+                _context.Responses.Add(response);
+            }
+
+            await SaveChangesAsync();
+        }
+    }
+}

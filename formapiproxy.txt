@@ -1,0 +1,210 @@
+using CFF.CareCenterPortal.Forms.Business.ApiProxies.Helpers;
+using CFF.CareCenterPortal.Forms.Business.Services.FormCentral;
+using CFF.CareCenterPortal.Forms.Contract;
+using CFF.FormCentral.Contract.Responses;
+using CFF.FormCentral.Contract.Requests;
+using Microsoft.Extensions.Configuration;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace CFF.CareCenterPortal.Forms.Business.ApiProxies.FormCentral
+{
+    public class FormApiProxy : IFormApiProxy
+    {
+        private readonly string _baseUrl;
+        private readonly IAuthorizedRestRequest _restRequest;
+        private readonly IConfiguration _configuration;
+
+        public const string StartFormUrl = "/api/forms/start";
+        public const string GetFormsUrl = "/api/forms";
+        public const string EditFormUrl = "/api/forms/edit";
+        public const string GetCompletedFormsUrl = "/api/forms/completed";
+        public const string GetIncompleteFormsUrl = "/api/forms/incomplete";
+        public const string SaveFormUrl = "/api/forms/save";
+        public const string GetRecentFormListUrl = "/api/forms/recent";
+        public const string GetPercentageCompleteUrl = "/api/forms/percentagecomplete";
+        public const string SubmitFormUrl = "/api/forms/submit";
+        public const string UnsubmitFormUrl = "/api/forms/unsubmit";
+        public const string GetMyFormsUrl = "/api/forms/my";
+        public const string DeleteFormUrl = "/api/forms/delete";
+        public const string ChangeFormStatusUrl = "/api/forms/changestatus";
+        public const string ChangeStatusMultipleUrl = "/api/forms/completeAllAcceptedForms";
+        public const string AdminFormListUrl = "/api/admin/list";
+        public const string AdminHistoricFormListUrl = "/api/admin/historic";
+        public const string GetExternalVariablesUrl = "/api/admin/external-variable-data-export";
+        public const string GetAdvertisedFormsUrl = "/api/forms/advertised";
+        public const string GetAdminFormTypeList = "/api/admin/formtypes";
+        public const string SaveAdminFormTypeList = "/api/admin/saveformtypes";
+
+        public FormApiProxy(IAuthorizedRestRequest restRequest, IConfiguration configuration)
+        {
+            _configuration = configuration;
+            _baseUrl = _configuration["FormCentralApiBaseUrl"];
+
+            _restRequest = restRequest;
+            _restRequest.SetBaseUrl(_baseUrl);
+        }
+
+        public async Task<StartedFormResponse> StartNewFormAsync(StartFormRequest startFormRequest)
+        {
+            var response = await _restRequest.PostAsync<StartedFormResponse,StartFormRequest>(StartFormUrl, startFormRequest);
+
+            return response;
+        }
+
+        public async Task<ApiResponse> CompleteAllAcceptedForms(int[] listOfFormIds)
+        {
+            var response = await _restRequest.PostAsync<ApiResponse, int[]>(ChangeStatusMultipleUrl, listOfFormIds);
+
+            return response;
+        }
+
+        public async Task<GetFormResponse> GetAsync(int formId)
+        {
+            var parameters = new List<KeyValuePair<string, int>>()
+            {
+                new KeyValuePair<string,int>("formId", formId)
+            };
+
+            var response = await _restRequest.GetAsync<GetFormResponse, int>(GetFormsUrl, parameters);
+
+            return response;
+        }
+
+        public async Task<GetFormResponse> EditAsync(int formId)
+        {
+            var parameters = new List<KeyValuePair<string, int>>()
+            {
+                new KeyValuePair<string,int>("formId", formId)
+            };
+
+            var response = await _restRequest.GetAsync<GetFormResponse, int>(EditFormUrl, parameters);
+
+            return response;
+        }
+
+        public async Task<GetFormListResponse> GetCompletedFormsAsync()
+        {
+            var response = await _restRequest.GetAsync<GetFormListResponse>(GetCompletedFormsUrl);
+
+            return response;
+        }
+
+        public async Task<GetFormListResponse> GetIncompleteFormsAsync()
+        {
+            var response = await _restRequest.GetAsync<GetFormListResponse>(GetIncompleteFormsUrl);
+
+            return response;
+        }
+
+        public async Task<GetFormListResponse> GetMyFormsAsync()
+        {
+            var response = await _restRequest.GetAsync<GetFormListResponse>(GetMyFormsUrl);
+
+            return response;
+        }
+
+        public async Task<SavedFormResponse> SaveFormAsync(SaveFormRequest saveFormRequest)
+        {
+            var response = await _restRequest.PostAsync<SavedFormResponse, SaveFormRequest>(SaveFormUrl, saveFormRequest);
+
+            return response;
+        }
+
+        public async Task<GetFormListResponse> GetRecentFormListAsync()
+        {
+            var response = await _restRequest.GetAsync<GetFormListResponse>(GetRecentFormListUrl);
+
+            return response;
+        }
+
+        public async Task<int> GetPercentageCompleteAsync(int formId)
+        {
+            var parameters = new List<KeyValuePair<string, int>>()
+            {
+                new KeyValuePair<string,int>("formId", formId)
+            };
+
+            var response = await _restRequest.GetAsync<int, int>(GetPercentageCompleteUrl, parameters);
+
+            return response;
+        }
+
+
+        public async Task<SubmittedFormResponse> SubmitAsync(SubmitFormRequest submitRequest)
+        {
+            var response = await _restRequest.PostAsync<SubmittedFormResponse, SubmitFormRequest>(SubmitFormUrl, submitRequest);
+
+            return response;
+        }
+
+        public async Task<UnsubmittedFormResponse> UnsubmitAsync(int formId)
+        {
+            var parameters = new List<KeyValuePair<string, int>>()
+            {
+                new KeyValuePair<string,int>("formId", formId)
+            };
+
+            var response = await _restRequest.PostAsync<UnsubmittedFormResponse, int>(UnsubmitFormUrl, parameters);
+
+            return response;
+        }
+
+        public async Task DeleteFormAsync(int formId)
+        {
+            var parameters = new List<KeyValuePair<string, int>>()
+            {
+                new KeyValuePair<string,int>("formId", formId)
+            };
+
+            await _restRequest.DeleteAsync(DeleteFormUrl, parameters);
+
+            return;
+        }
+
+        public async Task ChangeStatus(int formId, int newStatusId)
+        {
+            var parameters = new List<KeyValuePair<string, int>>()
+            {
+                new KeyValuePair<string,int>("formId", formId),
+                new KeyValuePair<string,int>("newStatusId", newStatusId)
+            };
+
+            await _restRequest.PutAsync(ChangeFormStatusUrl, parameters);
+        }
+
+        public async Task<GetFormListResponse> GetAdminFormsAsync()
+        {
+            return await _restRequest.GetAsync<GetFormListResponse>(AdminFormListUrl);
+        }
+
+        public async Task<GetFormListResponse> GetHistoricAdminFormsAsync()
+        {
+            return await _restRequest.GetAsync<GetFormListResponse>(AdminHistoricFormListUrl);
+        }
+
+        public async Task<GetFormTypeAdminListResponse> GetAdminFormTypeListAsync()
+        {
+            // gets current user's admin form type list
+            return await _restRequest.GetAsync<GetFormTypeAdminListResponse>(GetAdminFormTypeList);
+        }
+
+        public async Task<SavedFormTypeListResponse> SaveAdminFormTypesAsync(SaveFormTypeListRequest request)
+        {
+           return await _restRequest.PostAsync<SavedFormTypeListResponse, SaveFormTypeListRequest>(SaveAdminFormTypeList, request);
+        }
+
+        public async Task<string> GetExternalVariables(int formId)
+        {
+            var response = await _restRequest.GetAsync<string>(GetExternalVariablesUrl + "/" + formId);
+            return response;
+        }
+
+        public async Task<GetFormTypeListResponse> GetAdvertisedFormListAsync()
+        {
+            return await _restRequest.GetAsync<GetFormTypeListResponse>(GetAdvertisedFormsUrl);
+        }
+    }
+}
+

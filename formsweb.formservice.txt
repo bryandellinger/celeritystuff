@@ -1,0 +1,371 @@
+using AutoMapper;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using CFF.CareCenterPortal.Forms.Business.ApiProxies.FormCentral;
+using CFF.CareCenterPortal.Forms.Models.Forms;
+using CFF.FormCentral.Contract.Requests;
+using CFF.FormCentral.Contract.Responses;
+using System;
+using System.Linq;
+using CFF.FormCentral.Contract.Models;
+using CFF.CareCenterPortal.Models;
+using CFF.FormCentral.Contract.LookupValues;
+using Newtonsoft.Json;
+using System.Diagnostics;
+
+namespace CFF.CareCenterPortal.Forms.Business.Services.FormCentral
+{
+    public class FormService : IFormService
+    {
+        private readonly ISectionService _sectionService;
+        private readonly IFormApiProxy _formApiProxy;
+        private readonly IQuestionService _questionService;
+        private readonly IInstitutionProfileService _institutionService;
+        private readonly ICareTeamService _careTeamService;
+
+        public FormService(ISectionService sectionService, IFormApiProxy formApiProxy, IQuestionService questionService
+            , IInstitutionProfileService institutionService, ICareTeamService careTeamService)
+        {
+            _sectionService = sectionService;
+            _formApiProxy = formApiProxy;
+            _questionService = questionService;
+            _institutionService = institutionService;
+            _careTeamService = careTeamService;
+        }
+
+        public async Task<int> StartAsync(StartFormRequest request)
+        {
+            var newForm = await _formApiProxy.StartNewFormAsync(request);
+            return newForm.StartedFormId;
+        }
+
+        public async Task<FormViewModel> GetAsync(int formId, Guid userGuid)
+        {
+            var form = (await _formApiProxy.GetAsync(formId)).Form;
+            var formViewModel = new FormViewModel(form, userGuid)
+            {
+                IsReadOnly = true
+            };
+
+            formViewModel.Sections = await _sectionService.GetSectionListAsync(formId);
+
+            return formViewModel;
+        }
+
+        public async Task<FormViewModel> EditAsync(int formId, Guid userGuid)
+        {
+            var form = (await _formApiProxy.EditAsync(formId)).Form;
+            var formViewModel = new FormViewModel(form);
+
+            formViewModel.Sections = await _sectionService.GetSectionListAsync(formId);
+
+            return formViewModel;
+        }
+
+        public async Task<List<FormSummaryBaseViewModel>> GetAdminFormsListAsync()
+        {
+            var formTask = await GetAdminFormsAsync();
+
+            return formTask;
+        }
+
+        public async Task<FormTypeAdminViewModel> GetEditFormTypeListAsync()
+        {
+            var response = await _formApiProxy.GetAdminFormTypeListAsync();
+
+            if (response == null) return new FormTypeAdminViewModel();
+
+            return new FormTypeAdminViewModel()
+            {
+                FormTypes = response.FormTypes.Where(x => x.HasAdminListAccess).Select(x => new FormTypeViewModel()
+                {
+                    FormTypeId = x.Id,
+                    Name = x.Name,
+                    Description = x.Description,
+                    StartDate = x.StartDate,
+                    EndDate = x.EndDate
+                }).OrderBy(x => x.Name)
+                .ToList()
+            };
+        }
+
+        public async Task<SavedFormTypeListResponse> SaveAdminFormTypeListAsync(FormTypeAdminViewModel formTypeList)
+        {
+            var request = new SaveFormTypeListRequest()
+            {
+                FormTypes = formTypeList.FormTypes.Select(x => new FormTypeDto()
+                {
+                    Id = x.FormTypeId,
+                    Name = x.Name,
+                    Description = x.Description,
+                    StartDate = x.StartDate,
+                    EndDate = x.EndDate,
+                    IsAdvertised = x.IsAdvertised
+                }).ToList()
+            };
+
+            var result = await _formApiProxy.SaveAdminFormTypesAsync(request);
+
+            return result;
+        }
+
+        public async Task<List<FormSummaryBaseViewModel>> GetHistoricAdminFormsListAsync()
+        {
+            var formTask = await GetHistoricAdminFormsAsync();
+
+            return formTask;
+        }
+
+        private async Task<List<FormSummaryBaseViewModel>> GetAdminFormsAsync()
+        {
+            var response = await _formApiProxy.GetAdminFormsAsync();
+
+            if (response == null) return new List<FormSummaryBaseViewModel>();
+
+            return response.Forms.Select(x => new FormSummaryBaseViewModel(x)).ToList();
+        }
+
+        private async Task<List<FormSummaryBaseViewModel>> GetHistoricAdminFormsAsync()
+        {
+            var response = await _formApiProxy.GetHistoricAdminFormsAsync();
+
+            if (response == null) return new List<FormSummaryBaseViewModel>();
+
+            return response.Forms.Select(x => new FormSummaryBaseViewModel(x)).ToList();
+        }
+
+        public async Task<List<FormSummaryBaseViewModel>> GetFormQueueAsync(Guid userGuid)
+        {
+            var response = await _formApiProxy.GetIncompleteFormsAsync();
+
+            if (response == null) return new List<FormSummaryBaseViewModel>();
+
+            return response.Forms.Select(x => new FormSummaryBaseViewModel(x, userGuid)).ToList();
+        }
+
+        public async Task<List<MyFormSummaryViewModel>> GetMyFormsAsync(Guid userGuid)
+        {
+            var response = (await _formApiProxy.GetMyFormsAsync());
+
+            if (response == null) return new List<MyFormSummaryViewModel>();
+
+            return response.Forms.Select(x => new MyFormSummaryViewModel(x)).ToList();
+        }
+
+        public async Task<List<FormSummaryBaseViewModel>> GetHistoricFormsAsync()
+        {
+            var response = await _formApiProxy.GetCompletedFormsAsync();
+
+            if (response == null) return new List<FormSummaryBaseViewModel>();
+
+            return response.Forms.Select(x => new FormSummaryBaseViewModel(x)).ToList();
+        }
+
+        public async Task<FormReviewViewModel> GetFormReviewAsync(int formId)
+        {
+            var completionTask = GetPercentageCompleteAsync(formId);
+            var sectionsTask = _sectionService.GetSectionReviewListAsync(formId);
+            var sectionListTask = _sectionService.GetSectionListAsync(formId);
+            var formDetails = _formApiProxy.GetAsync(formId);
+
+            await Task.WhenAll(completionTask, sectionsTask, sectionListTask, formDetails);
+            var formReview = new FormReviewViewModel()
+            {
+                PercentageComplete = completionTask.Result,
+                Sections = sectionsTask.Result,
+                SectionDetails = sectionListTask.Result,
+            };
+
+            var questionResponse = await _questionService.GetQuestionListAsync(formId);
+
+            foreach (var section in formReview.SectionDetails)
+            {
+                section.QuestionAnswers = questionResponse.Questions.Select(x => new QuestionViewModel()
+                {
+                    SelectedChoices = GetSelectedChoices(x.Answer, x.Choices, x.Groups),
+                    Id = x.Id,
+                    SectionId = x.SectionId,
+                    Text = x.Text,
+                    SubText = x.SubText,
+                    Answer = x.Answer,
+                    Type = x.Type,
+                    IsRequired = x.IsRequired,
+                    ResponseGroupNumber = x.ResponseGroupNumber,
+                    RepeaterGroupId = x.RepeaterGroupId,
+                    RepeaterGroupName = x.RepeaterGroupName,
+                    IsSummaryQuestion = (section.CustomTemplateName.Contains("ReviewAndSubmit") ? true : false)
+                }).Where(x => x.SectionId == section.Id).ToList();
+            }
+
+            return formReview;
+        }
+
+        public async Task<List<DashboardFormListViewModel>> GetRecentFormListAsync()
+        {
+            var formsList = (await _formApiProxy.GetRecentFormListAsync());
+
+            if (formsList == null) return new List<DashboardFormListViewModel>();
+
+            return formsList.Forms.Select(x => new DashboardFormListViewModel(x)).ToList();
+        }
+
+        public async Task DeleteFormAsync(int formId)
+        {
+            await _formApiProxy.DeleteFormAsync(formId);
+            return;
+        }
+
+        public async Task<SavedFormResponse> SaveAsync(SaveFormRequest request)
+        {
+            return await _formApiProxy.SaveFormAsync(request);
+        }
+
+        public async Task<int> GetPercentageCompleteAsync(int formId)
+        {
+            return await _formApiProxy.GetPercentageCompleteAsync(formId);
+        }
+
+        public async Task<SubmittedFormResponse> SubmitAsync(SubmitFormRequest submitRequest)
+        {
+            return await _formApiProxy.SubmitAsync(submitRequest);
+        }
+
+        public async Task<UnsubmittedFormResponse> UnsubmitAsync(int formId)
+        {
+            return await _formApiProxy.UnsubmitAsync(formId);
+        }
+
+        public async Task<FormPrintoutViewModel> GetFormPrintoutDataAsync(int formId)
+        {
+            var formPrintoutViewModel = new FormPrintoutViewModel();
+
+            var formTask = GetAsync(formId, new Guid());
+            var questionResponseTask = _questionService.GetQuestionListAsync(formId);
+            var sectionsResponseTask = _sectionService.GetSectionListAsync(formId);
+
+            await Task.WhenAll(formTask, questionResponseTask, sectionsResponseTask);
+
+            formPrintoutViewModel.Form = formTask.Result;
+            var sectionsResponse = sectionsResponseTask.Result;
+            var questionResponse = questionResponseTask.Result;
+
+            // Fill questions in sections
+            foreach (var sec in sectionsResponse)
+            {
+                sec.QuestionAnswers = _questionService
+                    .MapListOfQuestionDtoToListOfQuestionViewModel(questionResponse.Questions)
+                    .Select(x => new QuestionViewModel()
+                    {
+                        SelectedChoices = GetSelectedChoices(x.Answer, x.Choices, x.Groups),
+                        Id = x.Id,
+                        SectionId = x.SectionId,
+                        Text = x.Text,
+                        Answer = x.Answer,
+                        Type = x.Type,
+                        IsRequired = x.IsRequired,
+                        ResponseGroupNumber = x.ResponseGroupNumber,
+                        RepeaterGroupId = x.RepeaterGroupId,
+                        RepeaterGroupName = x.RepeaterGroupName,
+                        Ordinal = x.Ordinal,
+                        SectionQuestionConditionalGroupId = x.SectionQuestionConditionalGroupId,
+                        IsSectionQuestionConditionalGroupActive = x.IsSectionQuestionConditionalGroupActive
+                    })
+                .Where(x => x.SectionId == sec.Id)
+                .ToList();
+            }
+
+            formPrintoutViewModel.Form.Sections = sectionsResponse;
+
+            // Get Institution Profile
+            if (sectionsResponse.Any(x => x.CustomTemplateName == FormTemplates.InstitutionProfile.Name))
+                formPrintoutViewModel.InstitutionProfile = await _institutionService.GetAsync(formId);
+
+            // Get CareTeam
+            if (sectionsResponse.Any(x => x.CustomTemplateName == FormTemplates.CareTeam.Name))
+                formPrintoutViewModel.CareTeam = await _careTeamService.GetAsync(formId);
+
+            return formPrintoutViewModel;
+        }
+
+
+
+        private List<QuestionChoiceDto> GetSelectedChoices(string answer, List<QuestionChoiceDto> choices, List<QuestionChoiceGroupDto> groups)
+        {
+            List<QuestionChoiceDto> allChoices = new List<QuestionChoiceDto>();
+            allChoices = choices.Union(groups.SelectMany(x => x.Choices)).ToList();
+
+            List<QuestionChoiceDto> result = new List<QuestionChoiceDto>();
+            if (allChoices.Count > 0)
+            {
+                try
+                {
+                    SelectedAnswers selectedAnswers = JsonConvert.DeserializeObject<SelectedAnswers>(answer);
+                    if (selectedAnswers != null && selectedAnswers.answers != null && selectedAnswers.answers.Count > 0)
+                    {
+                        result = allChoices.Where(x => selectedAnswers.answers.Contains(x.Choice)).ToList();
+                    }
+                }
+                catch (Exception)
+                {
+                    return result;
+                }
+
+            }
+            return result;
+        }
+
+        public async Task ChangeStatus(int formId, int newStatusId)
+        {
+            await _formApiProxy.ChangeStatus(formId, newStatusId);
+        }
+
+        public async Task CompleteAllAcceptedForms(int[] listOfFormIds)
+        {
+            await _formApiProxy.CompleteAllAcceptedForms(listOfFormIds);
+        }
+
+        public Task<string> GetExternalVariables(int formId)
+        {
+            return _formApiProxy.GetExternalVariables(formId);
+        }
+
+        public async Task<List<FormListBeginNewFormViewModel>> GetFormListStartableFormsAsync()
+        {
+            var formTypesList = await _formApiProxy.GetAdvertisedFormListAsync();
+
+            var viewModel = formTypesList.FormTypes.Select(x => new FormListBeginNewFormViewModel
+            {
+                Id = x.Id,
+                Name = x.Name,
+                Description = x.Description,
+                Url = $"/Forms/Form/StartPublic?formTypeId={x.Id}"
+            }).OrderBy(x => x.Name).ToList();
+
+            return viewModel;
+        }
+
+        public async Task<bool> CanEditFormTypes()
+        {
+            var response = await _formApiProxy.GetAdminFormTypeListAsync();
+
+            if (response == null) return false;
+
+            return (response.FormTypes.Any(x => x.CanEditFormType));
+        }
+
+        public async Task<bool> HasFormListAdminAccess()
+        {
+            var response = await _formApiProxy.GetAdminFormTypeListAsync();
+
+            if (response == null) return false;
+
+            return (response.FormTypes.Any(x => x.HasAdminListAccess));
+        }
+
+        private class SelectedAnswers
+        {
+            public List<string> answers { get; set; }
+        }
+    }
+}
+

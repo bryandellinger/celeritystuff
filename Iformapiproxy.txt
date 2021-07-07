@@ -1,0 +1,37 @@
+using CFF.CareCenterPortal.Forms.Business.Services.FormCentral;
+using CFF.CareCenterPortal.Forms.Contract;
+using CFF.FormCentral.Contract.Requests;
+using CFF.FormCentral.Contract.Responses;
+using System.Threading.Tasks;
+
+namespace CFF.CareCenterPortal.Forms.Business.ApiProxies.FormCentral
+{
+    public interface IFormApiProxy
+    {
+        Task<StartedFormResponse> StartNewFormAsync(StartFormRequest createFormRequest);
+        Task<GetFormResponse> GetAsync(int formId);
+        Task<GetFormResponse> EditAsync(int formId);
+        Task<GetFormListResponse> GetCompletedFormsAsync();
+        Task<GetFormListResponse> GetIncompleteFormsAsync();
+
+		Task<GetFormListResponse> GetMyFormsAsync();
+
+        Task<SavedFormResponse> SaveFormAsync(SaveFormRequest saveFormRequest);
+        Task<GetFormListResponse> GetRecentFormListAsync();
+        Task<int> GetPercentageCompleteAsync(int formId);
+        Task<SubmittedFormResponse> SubmitAsync(SubmitFormRequest formId);
+        Task<UnsubmittedFormResponse> UnsubmitAsync(int formId);
+        Task DeleteFormAsync(int formId);
+        Task ChangeStatus(int formId, int newStatusId);
+
+		Task<GetFormListResponse> GetAdminFormsAsync();
+
+		Task<GetFormListResponse> GetHistoricAdminFormsAsync();
+        Task<GetFormTypeAdminListResponse> GetAdminFormTypeListAsync();
+        Task<SavedFormTypeListResponse> SaveAdminFormTypesAsync(SaveFormTypeListRequest request);
+        Task<string> GetExternalVariables(int formId);
+		Task<ApiResponse> CompleteAllAcceptedForms(int[] listOfFormIds);
+
+        Task<GetFormTypeListResponse> GetAdvertisedFormListAsync();
+    }
+}

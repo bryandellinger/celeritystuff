@@ -1,0 +1,72 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Security.Claims;
+using System.Threading.Tasks;
+
+namespace CFF.CareCenterPortal.Review.Web.Services
+{
+    public class ApiClientService
+    {
+		IHttpContextAccessor _httpContext;
+
+		public ApiClientService(IHttpContextAccessor httpContextAccessor)
+		{
+			_httpContext = httpContextAccessor;
+		}
+
+        public HttpClient Client { get; set; } = new HttpClient();
+
+		public T Get<T>(Uri baseUri, string apiUrl)
+		{
+			return MakeCall<T>(baseUri, apiUrl, x => { return Client.GetAsync(x).Result; });
+		}
+
+		public T Delete<T>(Uri baseUri, string apiUrl)
+		{
+			return MakeCall<T>(baseUri, apiUrl, x => { return Client.DeleteAsync(x).Result; });
+		}
+
+		public T Post<T, T2>(Uri baseUri, string apiUrl, T2 data)
+		{
+			return MakeCall<T>(baseUri, apiUrl, x => { return Client.PostAsJsonAsync(x, data).Result; });
+		}
+
+		public T Put<T, T2>(Uri baseUri, string apiUrl, T2 data)
+		{
+			return MakeCall<T>(baseUri, apiUrl, x => { return Client.PutAsJsonAsync(x, data).Result; });
+		}
+
+		private T MakeCall<T>(Uri baseUri, string apiUrl, Func<Uri, HttpResponseMessage> apiCall)
+		{
+			var url = new Uri(baseUri, apiUrl);
+			var userAccessToken = _httpContext.HttpContext.GetTokenAsync("access_token").Result;
+			Client.SetBearerToken(userAccessToken);
+
+			var response = apiCall(url); 
+			if (response.IsSuccessStatusCode)
+			{
+				return response.Content.ReadAsAsync<T>().Result;
+			}
+			else
+			{
+				if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+				{
+					throw new UnauthorizedAccessException("User is unauthorized.");
+				}
+				try
+				{
+					string error = response.Content.ReadAsStringAsync().Result;
+					throw new ApplicationException(error);
+				}
+				catch (Exception)
+				{
+					throw;
+				}
+			}
+		}
+	}
+}

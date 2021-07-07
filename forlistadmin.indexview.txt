@@ -1,0 +1,89 @@
+@using CFF.CareCenterPortal.Forms.Web.Authorization;
+@inject IPortalUserService portalUserService;
+@inject Microsoft.Extensions.Configuration.IConfiguration config;
+@{
+    Layout = "_HtmlLayout";
+    ViewBag.Title = "CFF Portal";
+    var baseUrl = config["BaseUrl"] ?? "";
+}
+
+@if (portalUserService.CurrentUser.IsCommunityUser)
+{
+    <ol class="breadcrumb">
+        <li><a href="@baseUrl/">home</a></li>
+        <li class="active">administer forms</li>
+    </ol>
+}
+else
+{
+    <div class="row">
+        <div class="col-xs-6">
+            <ol class="breadcrumb">
+                <li><a href="/">home</a></li>
+                <li><a href="@baseUrl/">forms</a></li>
+                <li class="active">administer forms</li>
+            </ol>
+        </div>
+        @if ((bool)ViewData["CanEditFormTypes"] == true)
+        {
+            <div class="col-xs-6">
+                <div class="admin-icon text-right">
+                    <a href=@Url.Action("FormTypes", "FormListAdmin") class="text-muted">
+                        <svg width="24" height="24" aria-hidden="true" role="presentation">
+                            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-unlock"></use>
+                        </svg>
+                        <span class="hidden-xs">Administer Forms Types</span>
+                        <span class="hidden-sm hidden-md hidden-lg">Admin</span>
+                    </a>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<div class="form-list-heading-container">
+    <h1 class="page-header">
+        <svg fill="#006694" class="icon icon--inline" aria-hidden="true">
+            <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-unlock"></use>
+        </svg> Administer Forms
+    </h1>
+    <ul id="formTabs" class="form-list-tabs">
+        <li id="queueTab" role="presentation" class="active">Form Queue</li>
+        <li id="historyTab" role="presentation" data-ishistory="true">History</li>
+    </ul>
+</div>
+
+
+<div class="row form-list-admin-header">
+    <div class="col-lg-4">
+        <div class="form-group has-feedback">
+            <input type="search" class="form-control" id="search" aria-describedby="inputSearch">
+            <span class="form-control-feedback" aria-hidden="true">
+                <svg fill="#006694" class="icon icon--inline-larger" aria-hidden="true">
+                    <use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="#icon-search"></use>
+                </svg>
+            </span>
+        </div>
+    </div>
+    <div class="col-lg-3 col-lg-offset-5 visible-lg">
+        <buton class="btn btn-primary btn-block complete-all-accepted-forms">
+            Complete all accepted forms
+        </buton>
+    </div>
+    <div class="hidden-lg">
+        <buton class="btn btn-primary btn-block complete-all-accepted-forms">
+            Complete all accepted forms
+        </buton>
+    </div>
+</div>
+
+<div id="admin-forms-container"></div>
+
+@section scripts {
+    <script>
+		window.formListAdminBuilder = new app.components.FormListAdminBuilder({
+			container: '#admin-forms-container',
+			baseUrl: '@baseUrl.ToString()'
+		})
+    </script>
+}

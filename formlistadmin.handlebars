@@ -1,0 +1,88 @@
+{{#each Forms}}
+<div class="panel panel--forms" data-form-id={{Id}}>
+	<div class="row">
+		<div class="col-sm-9">
+			<div class="panel-heading">
+				<p style="font-weight: bold; font-size: 14px; text-transform: uppercase;">
+					<svg class="icon icon--inline-larger" aria-hidden="true" role="presentation" fill="{{color}}" focusable="false">
+						<use xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="{{icon}}"></use>
+					</svg>
+					<span>{{Status}}</span>
+					{{#if showPercentComplete}}
+					<span style="margin-left: 0.5em;">{{PercentageComplete}}% complete</span>
+					{{/if}}
+				</p>
+				<h2 class="panel-title"
+					style="font-size: 22px">
+					{{TypeName}}
+				</h2>
+
+			</div>
+			<div class="panel-body">
+				<p>{{Description}}</p>
+				{{#if CareCenterProgramName}}
+				<p>{{CareCenterProgramName}}{{#if CareCenterProgramTypeName}} - {{CareCenterProgramTypeName}} Program{{/if}} {{#if CareCenterProgramNumber}}Number {{CareCenterProgramNumber}}{{/if}}</p>
+				{{/if}}
+				<p></p>
+				<p>Submitted by {{SubmittedBy}}</p>
+			</div>
+		</div>
+		<div class="col-sm-3">
+			<div class="panel-heading">
+				<p style="font-size: 14px;">
+					<span>Created: <strong>{{startedDateShortDateString}}</strong></span>
+				</p>
+			</div>
+			<div class="panel-body">
+				<a class="btn btn-primary btn-block" href="{{viewLink}}">View</a>
+				<a class="btn btn-primary btn-block" target="_blank" href="{{printLink}}">Print</a>
+				{{#if showExternalVariableButton}}
+					<a class="btn btn-primary btn-block" href="{{externalVariableLink}}" download> 
+						<span class="visible-lg">Variable Request Sheet</span>
+						<span class="hidden-lg">Variables</span>
+					</a>
+				{{/if}}
+				{{#each allowedStatuses}}
+				<!-- Button trigger modal -->
+				<button type="button" class="btn btn-primary btn-block"
+						style="margin-bottom: 5px;"
+						data-next-status={{nextStatus}}
+						data-form-id={{../Id}}
+						data-toggle="modal" data-target="#myModal{{../Id}}_{{@index}}">
+					{{changeStatusButtonText}}
+				</button>
+				<!-- Modal -->
+				<div class="modal fade" id="myModal{{../Id}}_{{@index}}" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+					<div class="modal-dialog" role="document">
+						<div class="modal-content">
+							<div class="modal-header">
+								<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+								<h4 class="modal-title" id="myModalLabel{{../Id}}_{{@index}}">{{../Description}}</h4>
+							</div>
+							<div class="modal-body">
+								{{modalText}}
+							</div>
+							<div class="modal-footer">
+								<button type="button" class="btn btn-default" data-dismiss="modal">No</button>
+								<button type="button" class="btn btn-primary confirm-change-status" data-dismiss="modal"
+										data-status="{{../Status}}"
+										data-newStatusId="{{newStatusId}}">
+									Yes
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+				{{/each	}}
+			</div>
+		</div>
+	</div>
+</div>
+
+{{/each	}}
+{{#unless Forms.length}}
+<div class="alert alert-warning" role="alert">
+	<strong>No Data Found.</strong>There are no records that match your search.
+</div>
+{{/unless}}
+

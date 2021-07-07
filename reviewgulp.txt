@@ -1,0 +1,200 @@
+/// <binding BeforeBuild='default' />
+/*
+This file is the main entry point for defining Gulp tasks and using Gulp plugins.
+Click here to learn more. https://go.microsoft.com/fwlink/?LinkId=518007
+*/
+
+var gulp = require('gulp');
+var del = require('del');
+var watch = require('gulp-watch');
+var concat = require('gulp-concat');
+var npmUpdate = require('gulp-update');
+var uglify = require('gulp-uglify');
+var minify = require('gulp-minify');
+var rename = require('gulp-rename');
+var ngAnnotate = require('gulp-ng-annotate');
+var plumber = require('gulp-plumber');
+var sourcemaps = require('gulp-sourcemaps');
+var rev = require('gulp-rev');
+var version = require('gulp-version-number');
+var to5 = require('gulp-6to5');
+
+/**************************************************clean*****************************************************/
+
+gulp.task('clean:css', () => {
+    return del([
+        './wwwroot/css/**',
+    ]);
+});
+
+gulp.task('clean:fonts', () => {
+    return del([
+        './wwwroot/fonts/**'
+    ]);
+});
+
+gulp.task('clean:vendor', () => {
+    return del([
+        './wwwroot/js/vendor/**'
+    ]);
+});
+
+gulp.task('clean:review', () => {
+    return del([
+        './wwwroot/js/review/**'
+    ]);
+});
+
+gulp.task('clean:js', () => {
+    return del([
+        './wwwroot/js/**'
+    ]);
+});
+
+gulp.task('clean:all', ['clean:css', 'clean:fonts', 'clean:js']);
+
+/***********************************************move*****************************************************************/
+
+
+gulp.task('move:css', ['clean:css'],  () => {
+    return gulp.src([
+        './Content/css/**/*.css',
+        './node_modules/jquery-ui-dist/jquery-ui.css',
+        './node_modules/fuelux/dist/css/fuelux.min.css'
+
+    ])
+        .pipe(gulp.dest('./wwwroot/css'));
+});
+
+gulp.task('move:fonts', ['clean:fonts'], () => {
+    return (gulp.src('./Content/fonts/**/*.*'))
+        .pipe(gulp.dest('./wwwroot/fonts'))
+});
+
+gulp.task('move:vendorjs', ['clean:vendor'], () => {
+    return gulp.src([
+        './Content/js/client.bundle.js',
+        './Content/js/highcharts-ng.js',
+        './node_modules/angular/angular.js',
+        './node_modules/angular-ui-router/release/angular-ui-router.js',
+        './node_modules/jquery/dist/jquery.js',
+        './node_modules/toastr/build/toastr.min.js',
+        './node_modules/angular-dragdrop/src/angular-dragdrop.min.js',
+        './node_modules/jquery-ui-dist/jquery-ui.min.js',
+        './node_modules/bootstrap/dist/js/bootstrap.js',
+        './node_modules/angularjs-dropdown-multiselect/dist/angularjs-dropdown-multiselect.min.js',
+        './node_modules/highcharts/highcharts.js',
+        './node_modules/highcharts/highcharts-more.js',
+        './node_modules/highcharts/modules/solid-gauge.js',
+        './node_modules/angular-animate/angular-animate.min.js',
+        './node_modules/angular-sanitize/angular-sanitize.min.js',
+        './node_modules/angular-ui-bootstrap/dist/ui-bootstrap-tpls.js',
+        './node_modules/fuelux/dist/js/fuelux.min.js'
+    ])
+        .pipe(gulp.dest('./wwwroot/js/vendor'));
+});
+
+gulp.task('move:review', ['clean:review'], () => {
+    return gulp.src([
+        './Content/js/review/*.js',
+        './Content/js/review/*/*'
+    ])
+        .pipe(gulp.dest('./wwwroot/js/review'));
+});
+
+/***************************************concat and minify****************************************/
+
+gulp.task('concat:css', ['move:css'], () => {
+    return gulp.src('./wwwroot/css/*.css')
+        .pipe(concat('bundled.css'))
+        .pipe(gulp.dest('./wwwroot/css'));
+});
+
+
+
+
+gulp.task('concatandminify:reviewjs', ['move:review'], () => {
+    return gulp.src([
+        './Content/js/review/*module*.js',
+        './Content/js/review/*.js',
+        './Content/js/review/*/*module*.js',
+        './Content/js/review/*/*.js',
+    ])
+        .pipe(sourcemaps.init())
+        .pipe(to5())
+        .pipe(plumber())
+        .pipe(concat('reviewbundle.js', { newLine: ';' }))
+        .pipe(ngAnnotate({ add: true }))
+        .pipe(plumber.stop())
+        .pipe(minify())
+        .pipe(sourcemaps.write('.'))
+        .pipe(gulp.dest('./wwwroot/js'));
+});
+
+gulp.task('concatandminify:vendorjs', ['move:vendorjs'], () => {
+    return gulp.src([
+        './node_modules/jquery/dist/jquery.js',
+        './node_modules/jquery-ui-dist/jquery-ui.js',
+        './node_modules/bootstrap/dist/js/bootstrap.js',
+        './node_modules/angular/angular.js',
+        './node_modules/angular-ui-router/release/angular-ui-router.js',
+        './node_modules/toastr/toastr.js',
+        './node_modules/angular-dragdrop/src/angular-dragdrop.js',
+        './node_modules/angularjs-dropdown-multiselect/dist/src/angularjs-dropdown-multiselect.js',
+        './node_modules/highcharts/highcharts.js',
+        './node_modules/highcharts/highcharts-more.js',
+        './node_modules/highcharts/modules/solid-gauge.js',
+        './node_modules/angular-animate/angular-animate.min.js',
+        './node_modules/angular-sanitize/angular-sanitize.min.js',
+        './node_modules/angular-ui-bootstrap/dist/ui-bootstrap-tpls.js',
+        './node_modules/fuelux/dist/js/fuelux.js'
+    ])
+        .pipe(concat('vendorbundle.js'))
+        .pipe(sourcemaps.init())
+        .pipe(minify())     
+        .pipe(sourcemaps.write('.'))
+        .pipe(gulp.dest('./wwwroot/js'));
+});
+
+gulp.task('version', ['concatandminify:reviewjs'], () => {
+   return  gulp.src('./**/*.cshtml')
+       .pipe(version({
+           'value': '%MDS%',
+           'append': {
+               'key': 'v',
+               'to': ['css', 'js'],
+           },
+       }))
+        .pipe(gulp.dest('./'))
+});
+
+
+
+
+/*********************************other**************************/
+
+gulp.task('npmUpdate', function () {
+    var update = require('gulp-update')();
+});
+
+
+/**************************watch***************************/
+
+
+gulp.task('watch', () => {
+    gulp.watch(['./Content/js/review/**/*'], ['version']);
+    gulp.watch(['./Content/css/**/*.css'], ['concat:css']);
+    gulp.watch('./package.json').on('change', function (file) {
+        update.write(file);
+    });
+});
+
+/****************************default***********************/
+
+gulp.task('default', [
+    'move:fonts',
+    'concat:css',
+    'version',
+    'concatandminify:vendorjs',
+    'npmUpdate'
+    ]);

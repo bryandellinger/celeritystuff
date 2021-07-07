@@ -1,0 +1,204 @@
+using CFF.CareCenterPortal.Forms.Business.RestSharp;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
+using Newtonsoft.Json;
+using RestSharp;
+using RestSharp.Deserializers;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Security.Claims;
+using System.Threading.Tasks;
+using System.Web;
+
+namespace CFF.CareCenterPortal.Forms.Business.ApiProxies.Helpers
+{
+    /// <summary>
+    /// Rest request with the users access_token added to the HttpHeader from their claims.
+    /// </summary>
+    public class AuthorizedRestRequest : IAuthorizedRestRequest
+    {
+        private RestClient _client;
+        private string _userAccessToken;
+        private readonly IHttpContextAccessor _httpContextAccessor;
+
+        public AuthorizedRestRequest(IHttpContextAccessor httpContextAccessor)
+        {
+            _httpContextAccessor = httpContextAccessor;
+            _userAccessToken = _httpContextAccessor.HttpContext.GetTokenAsync("access_token").Result;
+        }
+
+        public void SetBaseUrl(string baseUrl)
+        {
+            _client = new RestClient(baseUrl);
+        }
+
+        public TResponse Get<TResponse>(string url)
+        {
+            ValidateConfiguration();
+
+            var request = new RestRequest(url, Method.GET);
+
+            request.AddParameter("Authorization", string.Format("Bearer " + _userAccessToken), ParameterType.HttpHeader);
+
+            var response = _client.Execute(request);
+
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+                throw new UnauthorizedAccessException();
+
+            JsonDeserializer jsonDeserializer = new JsonDeserializer();
+
+            //return jsonDeserializer.Deserialize<TResponse>(response);
+            return JsonConvert.DeserializeObject<TResponse>(response.Content);
+        }
+
+        public async Task<TResponse> GetAsync<TResponse>(string url)
+        {
+            ValidateConfiguration();
+
+            var request = new RestRequest(url, Method.GET);
+
+            request.AddParameter("Authorization", string.Format("Bearer " + _userAccessToken), ParameterType.HttpHeader);
+
+            var response = await _client.ExecuteTaskAsync<TResponse>(request);
+
+            return response.Data;
+        }
+
+        public async Task<TResponse> GetAsync<TResponse, TRequest>(string url, List<KeyValuePair<string, TRequest>> restParameters)
+        {
+            ValidateConfiguration();
+
+            var request = new RestRequest(url, Method.GET);
+
+            foreach (var parm in restParameters)
+            {
+                request.AddParameter(parm.Key, parm.Value, ParameterType.QueryString);
+            }
+
+            request.AddParameter("Authorization", string.Format("Bearer " + _userAccessToken), ParameterType.HttpHeader);
+
+            var response = await _client.ExecuteTaskAsync<TResponse>(request);
+
+            return response.Data;
+        }
+
+        public TResponse Post<TResponse, TRequest>(string url, TRequest restPostData)
+        {
+            ValidateConfiguration();
+
+            var request = new RestRequest(url, Method.POST);
+
+            // use custom serializer to keep RestSharp from changing the times to UTC+4 hours
+            //http://patrickrileyblogs.blogspot.com/2014/02/restsharp-using-jsonnet-serializer.html
+            request.RequestFormat = DataFormat.Json;
+            request.JsonSerializer = new RestSharpJsonNetSerializer();
+
+            request.AddJsonBody(restPostData);
+            request.AddParameter("Authorization", string.Format("Bearer " + _userAccessToken), ParameterType.HttpHeader);
+
+            var response = _client.Execute(request);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.OK)
+            {
+                JsonDeserializer jsonDeserializer = new JsonDeserializer();
+
+                return jsonDeserializer.Deserialize<TResponse>(response);
+            }
+
+            return default(TResponse);
+        }
+
+        public async Task<TResponse> PostAsync<TResponse, TRequest>(string url, TRequest restPostData)
+        {
+            ValidateConfiguration();
+
+            var request = new RestRequest(url, Method.POST);
+
+            // use custom serializer to keep RestSharp from changing the times to UTC+4 hours
+            //http://patrickrileyblogs.blogspot.com/2014/02/restsharp-using-jsonnet-serializer.html
+            request.RequestFormat = DataFormat.Json;
+            request.JsonSerializer = new RestSharpJsonNetSerializer();
+            
+            request.AddJsonBody(restPostData);
+            request.AddParameter("Authorization", string.Format("Bearer " + _userAccessToken), ParameterType.HttpHeader);
+
+            var response = await _client.ExecuteTaskAsync<TResponse>(request);
+
+            return response.Data;
+        }
+
+        public async Task<TResponse> PostAsync<TResponse, TRequest>(string url, List<KeyValuePair<string, TRequest>> restParameters)
+        {
+            ValidateConfiguration();
+
+            var request = new RestRequest(url, Method.POST);
+
+            foreach (var parm in restParameters)
+            {
+                request.AddParameter(parm.Key, parm.Value, ParameterType.QueryString);
+            }
+
+            request.AddParameter("Authorization", string.Format("Bearer " + _userAccessToken), ParameterType.HttpHeader);
+
+            var response = await _client.ExecuteTaskAsync<TResponse>(request);
+
+            return response.Data;
+        }
+
+        public async Task DeleteAsync(string deleteFormUrl, List<KeyValuePair<string, int>> parameters)
+        {
+            ValidateConfiguration();
+
+            var request = new RestRequest(deleteFormUrl, Method.DELETE);
+
+            foreach (var parm in parameters)
+            {
+                request.AddParameter(parm.Key, parm.Value, ParameterType.QueryString);
+            }
+
+            request.AddParameter("Authorization", string.Format("Bearer " + _userAccessToken), ParameterType.HttpHeader);
+
+            var response = await _client.ExecuteTaskAsync(request);
+
+            if(response.StatusCode != HttpStatusCode.OK)
+            {
+                throw new ApplicationException(response.StatusCode.ToString(), new Exception(response.StatusDescription));
+            }
+
+            return;
+        }
+
+        public async Task PutAsync(string changeFormStatusUrl, List<KeyValuePair<string, int>> parameters)
+        {
+            ValidateConfiguration();
+
+            var request = new RestRequest(changeFormStatusUrl, Method.PUT);
+
+            foreach (var parm in parameters)
+            {
+                request.AddParameter(parm.Key, parm.Value, ParameterType.QueryString);
+            }
+
+            request.AddParameter("Authorization", string.Format("Bearer " + _userAccessToken), ParameterType.HttpHeader);
+
+            var response = await _client.ExecuteTaskAsync(request);
+
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                throw new ApplicationException(response.StatusCode.ToString(), new Exception(response.StatusDescription));
+            }
+
+            return;
+        }
+
+        private void ValidateConfiguration()
+        {
+            if (_client.BaseUrl == null)
+                throw new NullReferenceException("You must first set the base Url.");
+        }
+
+        
+    }
+}

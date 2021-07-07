@@ -1,0 +1,268 @@
+using CFF.FormCentral.Business.Services.Interfaces;
+using CFF.FormCentral.Contract.Requests;
+using System.Linq;
+using CFF.FormCentral.Data.Repositories.Interfaces;
+using CFF.FormCentral.Contract.Responses;
+using System.Threading.Tasks;
+using System.Data.Entity;
+using System;
+using CFF.FormCentral.Contract.LookupValues;
+using CFF.FormCentral.Contract.Models;
+using CFF.FormCentral.Business.Projections;
+using CFF.FormCentral.Contract;
+
+namespace CFF.FormCentral.Business.Services
+{
+    public class FormService : IFormService
+    {
+        private readonly IFormRepository _formRepository;
+        private readonly ICareCenterProgramService _careCenterProgramService;
+        private readonly IFormProgressService _formProgressService;
+        private readonly IExternalVariableRepository _externalVariableRepository;
+        private readonly IChangeStatusHandlerFactory _changeStatusHandler;
+
+        public FormService(IFormRepository formRepository, ICareCenterProgramService careCenterProgramService, IFormProgressService formProgressService,
+            IChangeStatusHandlerFactory submissionHandlerFactory, IExternalVariableRepository externalVariableRepository)
+        {
+            _formRepository = formRepository;
+            _careCenterProgramService = careCenterProgramService;
+            _formProgressService = formProgressService;
+            _changeStatusHandler = submissionHandlerFactory;
+            _externalVariableRepository = externalVariableRepository;
+        }
+
+        public async Task<StartedFormResponse> StartNewFormAsync(StartFormRequest createRequest, PortalUser user)
+        {
+            var createdForm = new StartedFormResponse()
+            {
+                StartedFormId = await _formRepository.CreateAsync(createRequest.FormTypeId, createRequest.UserId, createRequest.OrganizationId, createRequest?.Status?.Id)
+            };
+
+            if (createRequest.IncludedSectionIds != null)
+            {
+                await _formRepository.AddSectionInclusions(createdForm.StartedFormId, createRequest.IncludedSectionIds);
+            }
+
+            await _formRepository.AddQuestionDefaults(createdForm.StartedFormId, createRequest.UserId);
+
+            await HandleFormStatusChange(createdForm.StartedFormId, FormStatuses.InProgress.Id, user);
+
+            return createdForm;
+        }
+
+        public async Task<GetFormResponse> EditAsync(int formId, Guid userGuid)
+        {
+            await ExtendLockExpirationAsync(formId, userGuid);
+
+            var form = await GetAsync(formId);
+
+            return form;
+        }
+
+        public async Task DeleteAsync(int formId, Guid userGuid)
+        {
+            await _formRepository.DeleteByFormId(formId, userGuid);
+        }
+
+        public async Task ExtendLockExpirationAsync(int formId, Guid userGuid)
+        {
+            var form = await _formRepository.GetFormById(formId).FirstOrDefaultAsync();
+
+            if (form.LockExpiration > DateTime.Now && userGuid != form.LastEditedBy)
+            {
+                // already locked
+                return;
+            }
+
+            form.LockExpiration = DateTime.Now.AddMinutes(60);
+            form.LastEditedBy = userGuid;
+
+            await _formRepository.SaveChangesAsync();
+        }
+
+        public async Task<GetFormResponse> GetAsync(int formId)
+        {
+            var form = await _formRepository.Get().WithId(formId).FirstOrDefaultAsync();
+
+            return new GetFormResponse() { Form = form };
+        }
+
+		public async Task<GetFormListResponse> GetIncompleteFormsForDashboardAsync(Guid userGuid, int? contactId)
+		{
+			if (!contactId.HasValue) return new GetFormListResponse();
+			var formList = await _formRepository.GetActiveOrganizationFormsByContactIdHeirachical(contactId.Value)
+				.WhereNotHistorical()
+				.OrderByDescending(f => f.LockExpiration)
+				.Take(5)
+				.ToListAsync();
+
+			var response = new GetFormListResponse() { Forms = formList };
+
+			return response;
+		}
+
+
+
+		public async Task<GetFormListResponse> GetIncompleteFormsAsync(Guid userGuid, int? contactId)
+        {
+            if (!contactId.HasValue) return new GetFormListResponse();
+            var formList = await _formRepository.GetActiveOrganizationFormsByContactIdHeirachical(contactId.Value).WhereNotHistorical().ToListAsync();
+
+            var answerCount = await _formProgressService.GetAsync(formList.Select(x => x.Id ?? 0).ToArray());
+
+            foreach (FormDto form in formList)
+            {
+                form.CountOfQuestionsRequired = answerCount.Where(x => x.FormId == form.Id).Select(x => x.CountOfRequiredQuestions).FirstOrDefault();
+                form.CountOfQuestionsRequiredAnswered = answerCount.Where(x => x.FormId == form.Id).Select(x => x.CountOfRequiredQuestionsAnswered).FirstOrDefault();
+            }
+
+            var response = new GetFormListResponse() { Forms = formList };
+
+            return response;
+        }
+
+        public async Task<GetFormListResponse> GetMyFormsAsync(Guid userGuid)
+        {
+            var formList = await _formRepository.GetUserForms(userGuid).WhereNotHistorical().ToListAsync();
+
+            var answerCount = await _formProgressService.GetAsync(formList.Select(x => x.Id ?? 0).ToArray());
+
+            foreach (FormDto form in formList)
+            {
+                form.CountOfQuestionsRequired = answerCount.Where(x => x.FormId == form.Id).Select(x => x.CountOfRequiredQuestions).FirstOrDefault();
+                form.CountOfQuestionsRequiredAnswered = answerCount.Where(x => x.FormId == form.Id).Select(x => x.CountOfRequiredQuestionsAnswered).FirstOrDefault();
+            }
+
+            var response = new GetFormListResponse() { Forms = formList };
+
+            return response;
+        }
+
+        public async Task<GetFormListResponse> GetCompletedFormsAsync(Guid userGuid, int? contactId)
+        {
+            if (!contactId.HasValue) return new GetFormListResponse();
+            var orgIds = await _careCenterProgramService.GetActiveClinicalOrganizations(contactId.Value)
+                                                        .Select(x => x.OrganizationId).ToListAsync();
+
+            var myForms = await _formRepository.GetUserForms(userGuid).WhereHistorical().ToListAsync();
+
+            return new GetFormListResponse()
+            {
+                Forms = _formRepository.Get()
+                                            .WhereHistorical()
+                                            .WithOrganizationIds(orgIds.ToArray())
+                                            .ToListAsync().Result.Union(myForms).ToList()
+            };
+        }
+
+        public async Task<GetFormListResponse> GetRecentFormListAsync(Guid userGuid, int? contactId)
+        {
+  
+            return await GetIncompleteFormsForDashboardAsync(userGuid, contactId);
+        }
+
+        public async Task<GetFormTypeListResponse> GetAdvertisedFormTypeListAsync()
+        {
+            var formTypeList = await _formRepository.GetFormTypes().Where(x => x.IsAdvertised == true
+                                                                            && DateTime.Now >= x.StartDate
+                                                                            && DateTime.Now <= x.EndDate).ToListAsync();
+
+            var response = new GetFormTypeListResponse() { FormTypes = formTypeList };
+
+            return response;
+        }
+
+        public async Task<SubmittedFormResponse> SubmitFormAsync(SubmitFormRequest submitRequest, PortalUser user)
+        {
+            if (await _formProgressService.GetPercentageComplete(submitRequest.FormId, true) != 100)
+                throw new ApplicationException("Not all required questions have been answered");
+
+            await HandleFormStatusChange(submitRequest.FormId, FormStatuses.Submitted.Id, user);
+
+            return new SubmittedFormResponse();
+        }
+
+        public async Task<UnsubmittedFormResponse> UnsubmitFormAsync(int formId, PortalUser user)
+        {
+            await HandleFormStatusChange(formId, FormStatuses.InProgress.Id, user);
+
+            return new UnsubmittedFormResponse();
+        }
+
+        private bool IsFormAdministrator(int formId, string guid)
+        {
+            return _formRepository.GetAdmin(new Guid(guid), FormStatuses.Accepted.Id, FormStatuses.Submitted.Id, FormStatuses.Complete.Id).Any(x => x.Id == formId);
+        }
+
+        public bool ContactHasFormIdAccess(int formId, string guid, int? contactId, bool isInQualifiedFormGroup)
+        {
+            return (contactId.HasValue && isInQualifiedFormGroup && _formRepository.GetActiveOrganizationFormsByContactIdHeirachical(contactId.Value).Where(x => x.Id == formId).Any()) ||
+                ContactHasPublicFormIdAccess(formId, guid) ||
+                IsFormAdministrator(formId, guid);
+        }
+
+        public bool ContactHasPublicFormIdAccess(int formId, string guid)
+        {
+            var form = _formRepository.GetFormById(formId).FirstOrDefault();
+            if (form == null)
+                return false;
+
+            return (form.UserID == new Guid(guid));
+        }
+
+        public async Task ChangeStatus(int formId, int newStatusId, PortalUser user)
+        {
+            await HandleFormStatusChange(formId, newStatusId, user);
+        }
+
+        public async Task<GetFormListResponse> GetAdminFormsAsync(Guid userId)
+        {
+            var adminForms = _formRepository.GetAdmin(userId, FormStatuses.Accepted.Id, FormStatuses.Submitted.Id);
+
+            var response = new GetFormListResponse() { Forms = await adminForms.ToListAsync() };
+
+            return response;
+        }
+
+        public async Task<GetFormListResponse> GetHistoricAdminFormsAsync(Guid userId)
+        {
+            var adminForms = _formRepository.GetAdmin(userId, FormStatuses.Complete.Id);
+
+            var response = new GetFormListResponse() { Forms = await adminForms.ToListAsync() };
+
+            return response;
+        }
+
+        public async Task<GetFormTypeAdminListResponse> GetAdminFormTypesAsync(Guid userId)
+        {
+            var formTypes = _formRepository.GetAdminFormTypes(userId);
+
+            var response = new GetFormTypeAdminListResponse() { FormTypes = await formTypes.ToListAsync() };
+
+            return response;
+        }
+
+        public async Task<SavedFormTypeListResponse> SaveAdminFormTypesAsync(SaveFormTypeListRequest request, PortalUser user )
+        {
+            await _formRepository.SaveFormTypes(request, new Guid(user.NameIdentitifier));
+
+            return new SavedFormTypeListResponse() { IsSuccess = true };
+        }
+
+        private async Task HandleFormStatusChange(int formId, int newStatusId, PortalUser user)
+        {
+            var form = (from forms in _formRepository.GetFormById(formId).Include(x => x.FormType.FormTypeCategory)
+                        select forms).FirstOrDefault();
+
+            var changeStatusHandler = _changeStatusHandler.GetHandler(form);
+            await changeStatusHandler.HandleStatusChange(form, newStatusId, user);
+        }
+
+        public async Task<string> GetExternalVariableData(int formId)
+        {
+            var response = await _externalVariableRepository.GetExternalVariables(formId);
+
+            return string.Join(",", response.Distinct().ToList());
+        }
+    }
+}

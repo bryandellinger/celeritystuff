@@ -1,0 +1,339 @@
+
+using CFF.FormCentral.Business.Services;
+using CFF.FormCentral.Contract.Models;
+using CFF.FormCentral.Data.DbParameters;
+using CFF.FormCentral.Data.Entities;
+using CFF.FormCentral.Data.Extensions;
+using CFF.FormCentral.Data.Queries;
+using CFF.FormCentral.Data.Repositories;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+
+namespace CFF.FormCentral.Data.Tests.RepositoryTests
+	/**
+	 * Unit tests for testing the Question Answer Queries SQL Query.
+	 * to ensure required questions and answers are accurate.
+	 **/
+{
+	[TestClass]
+	public class QuestionAnswerQueriesTest
+	{
+		private string _testConnectionString = "data source=HubDbT01.cff.org;initial catalog=ClinicalEnterprise;user id=carecentertestuser;password=careCenterTestUser;MultipleActiveResultSets=True;App=EntityFramework";
+		private string _stageConnectionString = "data source=HubDbS01.cff.org;initial catalog=ClinicalEnterprise;user id=carecentertestuser;password=careCenterTestUser;MultipleActiveResultSets=True;App=EntityFramework";
+		private int[] formIdsToTest;
+		private FormCentralContext _context;
+		private QuestionAnswerRepository questionAnswerRepository;
+		private FormRepository formRepository;
+
+		public QuestionAnswerQueriesTest(){
+			_context = new FormCentralContext(_testConnectionString);
+
+			questionAnswerRepository = new QuestionAnswerRepository(_context);
+
+			formRepository = new FormRepository(_context);
+
+			var orgFormIdsToTest = formRepository.GetAllActiveOrganizationForms().Where(x => x.Id != null).ToList().Select(x => x.Id.Value).ToArray();
+
+			var userFormIdsToTest = formRepository.GetAllUserForms().Where(x => x.Id != null).ToList().Select(x => x.Id.Value).ToArray();
+
+			// uncomment and run the below block to test all active public and organizational forms
+			formIdsToTest = new int[orgFormIdsToTest.Length + userFormIdsToTest.Length];
+			orgFormIdsToTest.CopyTo(formIdsToTest, 0);
+			userFormIdsToTest.CopyTo(formIdsToTest, orgFormIdsToTest.Length);
+
+			// comment the above section and uncomment the below section to run a specific suite of form ids.
+			//formIdsToTest = new int[] { 702, 877, 574 };
+		}
+
+
+		[TestMethod]
+		public void QuestionAnswerQueriesHaveSameCountTest()
+		{
+			// this unit test ensures that the old sql query and the new sql query has the same row count.
+
+			Debug.WriteLine($"testing {formIdsToTest.Count()} forms");
+
+			foreach (var formId in formIdsToTest)
+			{
+
+				var resultsFromNewQuery = GetResultsFromNewQuery(new int[] { formId });
+
+				var resultsFromOldQuery = GetResultsFromOldQuery(new int[] { formId });
+
+				Assert.AreEqual(resultsFromNewQuery.Count(), resultsFromOldQuery.Count(), $"formId: {formId}");
+			}
+			
+		}
+
+	
+
+		[TestMethod]
+		public void QuestionAnswerQueriesHaveSameValuesTest()
+		{
+			// this unit tests ensures that the same values save for required questions and answered required questions
+			// are the same.
+			// in addition any form where the number of errors are different between the new and old query will be logged
+
+			Debug.WriteLine($"testing {formIdsToTest.Count()} forms");
+			foreach (var formId in formIdsToTest)
+			{
+
+				var resultsFromNewQuery = GetResultsFromNewQuery(new int[] { formId });
+
+				var resultsFromOldQuery = GetResultsFromOldQuery(new int[] { formId });
+
+				for (int i = 0; i < resultsFromNewQuery.Count(); i++)
+				{
+					Assert.AreEqual(resultsFromNewQuery[i].FormId, resultsFromOldQuery[i].FormId, $"formId: {formId}");
+					Assert.AreEqual(resultsFromNewQuery[i].SectionCustomTemplateName, resultsFromOldQuery[i].SectionCustomTemplateName, $"formId: {formId}");
+					Assert.AreEqual(resultsFromNewQuery[i].SectionDescription, resultsFromOldQuery[i].SectionDescription, $"formId: {formId}");
+					Assert.AreEqual(resultsFromNewQuery[i].SectionName, resultsFromOldQuery[i].SectionName, $"formId: {formId}");
+					Assert.AreEqual(resultsFromNewQuery[i].SectionId, resultsFromOldQuery[i].SectionId, $"formId: {formId}");
+
+					if (resultsFromNewQuery[i].CountOfRequiredQuestions - resultsFromNewQuery[i].CountOfRequiredQuestionsAnswered != resultsFromOldQuery[i].CountOfRequiredQuestions - resultsFromOldQuery[i].CountOfRequiredQuestionsAnswered)
+					{
+						Debug.WriteLine($"form: {formId} section: {resultsFromNewQuery[i].SectionId} ({resultsFromNewQuery[i].SectionName})" +
+							$"old query required question errors: {resultsFromNewQuery[i].CountOfRequiredQuestions - resultsFromNewQuery[i].CountOfRequiredQuestionsAnswered} " +
+							$"new query required question errors: {resultsFromOldQuery[i].CountOfRequiredQuestions - resultsFromOldQuery[i].CountOfRequiredQuestionsAnswered} "
+						 );
+					}
+				}
+			}
+		
+		}
+
+		[TestMethod]
+		public void CompareAgainstSection()
+		{
+			//this test ensures that the sections from the service match the results from the new query.
+
+			Debug.WriteLine($"testing {formIdsToTest.Count()} forms");
+
+			var sectionRepository = new SectionRepository(_context);
+
+			var formProgressService = new FormProgressService(questionAnswerRepository);
+
+			var _service = new SectionService(sectionRepository, formProgressService, questionAnswerRepository);
+
+			foreach (var formId in formIdsToTest)
+			{
+				var sections = _service.GetByFormIdAsync(formId).Result.Sections;
+
+				var resultsFromNewQuery = GetResultsFromNewQuery(new int[] { formId });
+
+				foreach (var section in sections.Where(x => x.CustomTemplateName == "Questionnaire" || x.CustomTemplateName == "UserProfile"))
+				{
+
+					var resultFromNewQuery = resultsFromNewQuery.Where(x => x.SectionId == section.Id).FirstOrDefault();
+
+					Assert.AreEqual(resultFromNewQuery.CountOfRequiredQuestions, section.CountOfRequiredQuestions,
+						$"Failed on section {resultFromNewQuery.SectionName}" +
+						$" new Query Cout of Required : {resultFromNewQuery.CountOfRequiredQuestions}" +
+						$" section count of required {section.CountOfRequiredQuestions}" +
+						$" formId: {resultFromNewQuery.FormId} " +
+						$" sectionId: {resultFromNewQuery.SectionId} "
+						);
+
+					Assert.AreEqual(resultFromNewQuery.CountOfRequiredQuestionsAnswered, section.CountOfRequiredQuestionsAnswered,
+						$"Failed on section {resultFromNewQuery.SectionName}" +
+						$" new Query Count of required questions answered : {resultFromNewQuery.CountOfRequiredQuestions}" +
+						$" section count of required questions answered :  {section.CountOfRequiredQuestions}" +
+						$" formId: {resultFromNewQuery.FormId} " +
+						$" sectionId: {resultFromNewQuery.SectionId} "
+						);
+				}
+			}
+	
+		}
+
+		[TestMethod]
+		public void CompareAgainstQuestions()
+		{
+			// this test ensure that the required questions and answered required questions from the new query
+			// match required questions and required questions answered from the question response service.
+
+			Debug.WriteLine($"testing {formIdsToTest.Count()} forms");
+
+			var _service = new QuestionResponseService(questionAnswerRepository);
+
+			foreach (var formId in formIdsToTest)
+			{
+
+				var resultsFromNewQuery = GetResultsFromNewQuery(new int[] { formId });
+
+				foreach (var section in resultsFromNewQuery.Where(x => x.SectionCustomTemplateName == "Questionnaire" || x.SectionCustomTemplateName == "UserProfile"))
+				{
+					
+					var questions = _service.GetBySectionIdAsync(formId, section.SectionId).Result.Questions;
+
+					var RequiredQuestions = questions
+						.Where(x => x.IsRequired)
+						.Where(
+								x => x.SectionQuestionConditionalGroupId == null ||
+								IsSectionQuestionConditionalGroupActive(x, questions) == true
+							   ).ToList();
+
+					var RequiredQuestionsAnswered = RequiredQuestions.Where(x => IsQuestionAnswered(x)).ToList();
+
+					Assert.AreEqual(section.CountOfRequiredQuestions, RequiredQuestions.Count(),
+						$"Failed on section {section.SectionName} " +
+						$"formId: { section.FormId} " +
+						$"sectionId: { section.SectionId} " +
+						$"required questions from query: {section.CountOfRequiredQuestions} " +
+						$"required questions from question dto: {RequiredQuestions.Count()} "
+						);
+
+					Assert.AreEqual(section.CountOfRequiredQuestionsAnswered, RequiredQuestionsAnswered.Count(),
+						$"Failed on section {section.SectionName} " +
+						$"formId: { section.FormId} " +
+						$"sectionId: { section.SectionId} " +
+						$"required questions answered from query: {section.CountOfRequiredQuestionsAnswered} " +
+						$"required questions answered from question dto: {RequiredQuestionsAnswered.Count()} "
+						);
+				}
+			}			
+		}
+
+		private List<FormSectionResponseCountDto> GetResultsFromNewQuery(int[] formIds)
+		{
+			return _context.Database.ExtendedSqlQuery<FormSectionResponseCountDto>(QuestionAnswerQueries.FormTemplateResponseCountQuery,																					new SqlListParameter("@ids") { Value = formIds }).ToList();
+		}
+
+		private List<FormSectionResponseCountDto> GetResultsFromOldQuery(int[] formIds)
+		{
+			return _context.Database.ExtendedSqlQuery<FormSectionResponseCountDto>(QuestionAnswerQueriesOld.FormTemplateResponseCountQuery,																					new SqlListParameter("@ids") { Value = formIds }).ToList();
+		}
+
+		private bool IsQuestionAnswered(QuestionDto question)
+		{
+			if (string.IsNullOrEmpty(question.Answer))
+				return false;
+
+			if (string.IsNullOrWhiteSpace(question.Answer))
+				return false;
+
+			if (question.Type == "Integer")
+			{
+				var answerAsNum = new Double();
+				Double.TryParse(question.Answer, out answerAsNum);
+
+				if (question.MinLength != null )
+				{
+					if (answerAsNum < question.MinLength)
+						return false;
+				}
+				if (question.MaxLength != null)
+				{
+					if (answerAsNum > question.MaxLength)
+						return false;
+				}
+			}
+
+			if(question.Type == "DateRange")
+			{
+				if (question.Answer.Length != 17)
+				{
+					return false;
+				}
+
+				int from = Int32.Parse(question.Answer.Substring(5, 4));
+				int to = Int32.Parse(question.Answer.Substring(13, 4));
+
+				if (from > to)
+				{
+					return false;
+				}
+
+			}
+			if (question.Type == "Date")
+			{
+				try
+				{
+					DateTime oDate = DateTime.Parse(question.Answer);
+					if (oDate == null || oDate < new DateTime(1753, 1, 1))
+					{
+						return false;
+					}
+				}
+				catch (Exception)
+				{
+
+					return false;
+				}
+			}
+
+			if (question.Type == "PastDate")
+			{
+				try
+				{
+					DateTime oDate = DateTime.Parse(question.Answer);
+					if (oDate == null || oDate > DateTime.Now || oDate < new DateTime(1753, 1, 1))
+					{
+						return false;
+					}
+				}
+				catch (Exception)
+				{
+
+					return false;
+				}
+			}
+
+			if (!question.CanHaveMultipleAnswers)
+				return true;
+
+			List<string> answers = JsonConvert.DeserializeObject<Answers>(question.Answer).answers;
+
+			var noNullAnswers = answers.Where(x => x != null && x != "null" && !String.IsNullOrEmpty(x)).ToList();
+
+			if (noNullAnswers != null && noNullAnswers.Count() > 0)
+			{
+				return true;
+			}
+
+			return false;
+		}
+
+		private bool? IsSectionQuestionConditionalGroupActive(QuestionDto question, List<QuestionDto> questions)
+		{
+			if(!question.SectionQuestionConditionalGroupId.HasValue)
+				return null;
+
+			//If a question has groupId defined, there 'should' be a matching trigger with that group as an option
+			var triggersWithAMatchingChoiceOption = questions.FindAll(x => x.Type == "DropDownConditionalTrigger" && x.Choices.Exists(c => c.SectionQuestionConditionalGroupId == question.SectionQuestionConditionalGroupId));
+
+			//If a trigger question with a matching choice does not exist, return null
+			if (triggersWithAMatchingChoiceOption == null || triggersWithAMatchingChoiceOption.Count == 0)
+				return null;
+
+			//Find trigger with a matching answer that is part of an active conditional group
+			var triggerWithAnswer = triggersWithAMatchingChoiceOption
+				.Find(x => x.Answer != null && (x.SectionQuestionConditionalGroupId == null || (x.SectionQuestionConditionalGroupId != null && IsSectionQuestionConditionalGroupActive(x, questions) == true)));
+
+			//If no 'conditionally active' triggers with an answer are found, return false
+			if (triggerWithAnswer == null)
+				return false;
+
+			//Must check x.Answer against c.Choice since all answers are saved as a string... no key/value here!
+			var triggerWithMatchingAnswer = triggerWithAnswer.Choices.Exists(x => x.SectionQuestionConditionalGroupId == question.SectionQuestionConditionalGroupId && x.Choice == triggerWithAnswer.Answer);
+
+			//If that trigger has an answer and that answer IS the matching choice, return true
+			if (triggerWithMatchingAnswer)
+				return true;
+
+			//Trigger does not have an answer or the answer/choice does not match this questions groupId, return false
+			return false;
+		}		
+	}
+
+	internal class Answers
+	{
+		public List<String> answers { get; set; }
+	}
+}
+	
+

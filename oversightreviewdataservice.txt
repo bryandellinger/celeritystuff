@@ -1,0 +1,504 @@
+using CFF.Authorization.Navigation.Models;
+using CFF.CareCenterPortal.Review.Web.Models;
+using CFF.ReviewCentral.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace CFF.CareCenterPortal.Review.Web.Services
+{
+    public class OversightReviewDataService
+    {
+       private OversightReviewApiService _apiService;
+
+        public OversightReviewDataService(OversightReviewApiService apiService)
+        {
+			_apiService = apiService;
+         }
+
+        public List<ReviewProjectViewModel> GetReviewProjects()
+        {
+			var result = _apiService.GetReviewProjects();
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+
+			return result;
+        }
+
+		public List<DataFormattingViewModel> GetFormattingByProjectId(int id)
+		{
+			var result = _apiService.GetFormattingById(id);
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+
+			return result;
+		}
+
+		public bool UpdateReviewSummary(ReviewSummaryViewModel data)
+		{
+			var result = _apiService.UpdateReviewSummary(data);
+
+			return true;
+		}
+
+		public DataFormattingViewModel UpdateFormatting(DataFormattingViewModel data)
+		{
+			var result = _apiService.UpdateFormatting(data);
+
+			CheckForError(result.Error);
+
+			return result;
+		}
+
+		
+
+		public List<ScoreCategoryOptionViewModel> GetScoreCategoryOptions(int id)
+		{
+			var result = _apiService.GetScoreCategoryOptions(id);
+
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+			return result;
+		}
+
+		
+
+		public ScoreViewModel UpdateScore(ScoreViewModel data)
+		{
+			var result = _apiService.UpdateScore(data);
+
+			return result;
+		}
+
+		public TagViewModel AddTag(TagViewModel data)
+		{
+			var result = _apiService.AddTag(data);
+
+			CheckForError(result.Error);
+
+			return result;
+		}
+
+		public List <ScoreViewModel> GetProjectScore(int id)
+		{
+			var result = _apiService.GetProjectScore(id);
+
+			return result;
+		}
+
+
+
+		public bool DeleteOptionsByCategory(int categoryId)
+		{
+			return _apiService.DeleteOptionsByCategory(categoryId);
+		}
+
+		public bool DeleteByScoreCategoryOption(int id)
+		{
+			return _apiService.DeleteByScoreCategoryOption(id);
+		}
+
+		public List<ScoreCategoryViewModel> GetProjectScoreCategories(int id)
+		{
+			var result = _apiService.GetProjectScoreCategoriesByProjectId(id);
+
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+			return result;
+		}
+
+		public ScoreCategoryViewModel InsertScoreCategory(ScoreCategoryViewModel data)
+		{
+			var result = _apiService.InsertScoreCategory(data);
+
+			CheckForError(result.Error);
+
+			return result;
+
+		}
+
+		public bool UpdateScoreCategory(ScoreCategoryViewModel data)
+		{
+			return  _apiService.UpdateScoreCategory(data);
+
+	
+		}
+
+
+
+		public ScoreCategoryOptionViewModel InsertScoreCategoryOption(ScoreCategoryOptionViewModel data)
+		{
+			var result = _apiService.InsertScoreCategoryOption(data);
+
+			CheckForError(result.Error);
+
+			return result;
+		}
+
+		public ScoreCategoryOptionViewModel UpdateScoreCategoryOption(ScoreCategoryOptionViewModel data)
+		{
+			var result = _apiService.UpdateScoreCategoryOption(data);
+
+			CheckForError(result.Error);
+
+			return result;
+		}
+
+
+		public ReviewViewModel GetReviewForm(int assignmentId, int organizationId)
+		{
+			var result = _apiService.GetReviewForm(assignmentId, organizationId);
+
+			CheckForError(result.Error);
+
+			return result;
+		}
+
+		public bool DeleteTag(int id)
+		{
+			if (_apiService.DeleteTag(id))
+			{
+				return true;
+			}else
+			{
+				throw new ApplicationException("unable to delete tag");
+			}
+			
+		}
+
+		public bool DeleteScoreCategory(int id)
+		{
+			return _apiService.DeleteScoreCategory(id);
+		}
+
+		public AssignmentListViewModel GetReviewerAssignments(int contactId)
+		{
+			var result = _apiService.GetReviewerAssignments(contactId);
+
+				//CheckForError(result.Error);
+
+			return result;
+		
+		}
+
+		public bool UpdateTag(TagViewModel data)
+		{
+			var result = _apiService.UpdateTag(data);
+
+			CheckForError(result.Error);
+
+			return true;
+
+		
+		}
+
+		public List<ActionViewModel> GetActions()
+		{
+			var result =  _apiService.GetActions();
+
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+
+			return result;
+		}
+
+		public List<CategoryViewModel> GetCategories()
+		{
+			var result = _apiService.GetCategories();
+
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+
+			return result;
+		}
+
+		public List<OrganizationViewModel> GetProjectPrograms(int id)
+		{
+			var result = _apiService.GetProjectPrograms(id);
+
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+			return result;
+		}
+
+		
+
+		public AssignmentAdminViewModel GetProjectAssignments(int id)
+		{
+			var result = _apiService.GetProjectAssignments(id);
+
+			return result;
+		}
+
+		public List<ActionViewModel> GetActionsByProjectId(int id)
+		{
+			var result = _apiService.GetActionsByProjectId(id);
+
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+			return result;
+		}
+
+
+		public List<ActionViewModel> GetReviewActionsByReviewId(int id)
+		{
+			var result = _apiService.GetReviewActionsByReviewId(id);
+
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+			return result;
+		}
+
+		public List<CategoryViewModel> GetCategoriesByReviewId(int id)
+		{
+			var result = _apiService.GetCategoriesByReviewId(id);
+
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+			return result;
+		}
+
+
+
+		public List<CategoryViewModel> GetCategoriesByProjectId(int id)
+		{
+			var result = _apiService.GetCategoriesByProjectId(id);
+
+			foreach (var item in result)
+			{
+				CheckForError(item.Error);
+			}
+			return result;
+		}
+
+		public ReviewProjectViewModel GetReviewProject(int id)
+        {
+			var result = _apiService.GetReviewProject(id);
+
+			CheckForError(result.Error);
+
+			return result;
+		}
+
+		public List<ReviewerViewModel> GetProjectReviewers(int id)
+		{
+			var result = _apiService.GetProjectReviewers(id);
+
+			return result;
+		}
+
+		
+
+		public bool UpdateReviewProject(ReviewProjectViewModel data)
+        {
+			var result = _apiService.UpdateReviewProject(data);
+
+			return result;
+        }
+
+		public bool UpdateAction(ActionViewModel data)
+		{
+			var result = _apiService.UpdateAction(data);
+
+			//CheckForError(result.Error);
+
+			return result;
+
+		}
+
+		public bool UpdateCategory(CategoryViewModel data)
+		{
+			return _apiService.UpdateCategory(data);
+		}
+
+		public OrganizationViewModel AddAssignmentToProject(int id, int contactId, OrganizationViewModel data)
+		{
+			var result = _apiService.AddAssignmentToProject(id, contactId, data);
+
+			CheckForError(result.Error);
+
+			return result;
+		}
+
+		public bool DeleteProjectActions(int id, List<int> actionsToDelete)
+		{
+			foreach (var item in actionsToDelete)
+			{
+				var result = _apiService.DeleteActionFromProject(id, item);
+
+				CheckForError(result.Error);
+			}
+			return true;
+		}
+
+		public bool DeleteProjectCategories(int id, List<int> categoriesToDelete)
+		{
+			foreach (var item in categoriesToDelete)
+			{
+				var result = _apiService.DeleteCategoryFromProject(id, item);
+
+				CheckForError(result.Error);
+			}
+			return true;
+		}
+
+		
+
+		public bool InsertProjectActions(int id, List<int> actionsToInsert)
+		{
+			foreach (var item in actionsToInsert)
+			{
+				var result = _apiService.InsertActionIntoProject(id, item);
+
+				CheckForError(result.Error);
+			}
+			return true;
+		}
+
+		public bool InsertProjectCategories(int id, List<int> categoriesToInsert)
+		{
+			foreach (var item in categoriesToInsert)
+			{
+				var result = _apiService.InsertCategoryIntoProject(id, item);
+
+				CheckForError(result.Error);
+			}
+			return true;
+		}
+
+
+
+		public bool DeleteAction(int id)
+		{
+			var result = _apiService.DeleteAction(id);
+
+			CheckForError(result.Error);
+
+			return true;
+		}
+
+		public bool DeleteCategory(int id)
+		{
+			var result = _apiService.DeleteCategory(id);
+
+			CheckForError(result.Error);
+
+			return true;
+		}
+
+		public ReviewProjectViewModel InsertReviewProject(ReviewProjectViewModel data)
+        {
+            var result = _apiService.InsertReviewProject(data);
+
+			CheckForError(result.Error);
+
+			return result;
+
+		}
+
+		public ActionViewModel InsertAction(ActionViewModel data)
+		{
+			var result = _apiService.InsertAction(data);
+
+			CheckForError(result.Error);
+
+			return result;
+		}
+
+		public CategoryViewModel InsertCategory(CategoryViewModel data)
+		{
+			var result = _apiService.InsertCategory(data);
+
+			CheckForError(result.Error);
+
+			return result;
+		}
+
+		public ReviewerViewModel AddReviewerToProject(int id, ReviewerViewModel data)
+		{
+			var result = _apiService.InsertReviewProject(id, data);
+
+			return result;
+		}
+
+		public bool RemoveAssignmentFromProject(int id, int contactId, int organizationId)
+		{
+			var result = _apiService.RemoveAssignmentFromProject(id, contactId, organizationId);
+
+			CheckForError(result.Error);
+
+			return true;
+		}
+
+		public OrganizationViewModel AddProgramToProject(int id, OrganizationViewModel data)
+		{
+			var result = _apiService.InsertProgramProject(id, data);
+
+			CheckForError(result.Error);
+
+			return result;
+		}
+
+		public bool RemoveReviewerFromProject(int id, int contactId)
+		{
+			var result = _apiService.RemoveReviewerFromProject(id, contactId);
+
+			CheckForError(result.Error);
+
+			return true;
+		}
+		public bool RemoveProgramFromProject(int id, int organizationId)
+		{
+			var result = _apiService.RemoveProgramFromProject(id, organizationId);
+
+			CheckForError(result.Error);
+
+			return true;
+		}
+
+		public List <HeaderItem> GetNavigation()
+		{
+			var result = _apiService.GetNavigation();
+			return result;
+		}
+
+		private void CheckForError(string error)
+		{
+			if (error == null)
+			{
+				return;
+			}
+			if (string.IsNullOrEmpty(error))
+			{
+				return;
+			}
+			if (string.IsNullOrWhiteSpace(error))
+			{
+				return;
+			}
+
+			throw new ApplicationException(error);
+		}
+	}
+}

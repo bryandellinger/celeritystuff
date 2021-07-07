@@ -1,0 +1,18 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace CFF.CareCenterPortal.Forms.Business.ApiProxies.Helpers
+{
+    public interface IAuthorizedRestRequest
+    {
+        TResponse Get<TResponse>(string url);
+        Task<TResponse> GetAsync<TResponse, TRequest>(string url, List<KeyValuePair<string, TRequest>> restParameters);
+        Task<TResponse> GetAsync<TResponse>(string url);
+        TResponse Post<TResponse, TRequest>(string url, TRequest restPostData);
+        Task<TResponse> PostAsync<TResponse, TRequest>(string url, TRequest restPostData);
+        Task<TResponse> PostAsync<TResponse, TRequest>(string url, List<KeyValuePair<string, TRequest>> restParameters);
+        void SetBaseUrl(string baseUrl);
+        Task DeleteAsync(string deleteFormUrl, List<KeyValuePair<string, int>> parameters);
+        Task PutAsync(string changeFormStatusUrl, List<KeyValuePair<string, int>> parameters);
+    }
+}

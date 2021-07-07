@@ -1,0 +1,40 @@
+using CFF.FormCentral.Contract.Requests;
+using CFF.FormCentral.Contract.Responses;
+using System.Threading.Tasks;
+using System;
+using System.Collections.Generic;
+using CFF.FormCentral.Contract;
+
+namespace CFF.FormCentral.Business.Services.Interfaces
+{
+    public interface IFormService
+    {
+        Task<GetFormResponse> GetAsync(int formId);
+        Task<StartedFormResponse> StartNewFormAsync(StartFormRequest formTypeId, PortalUser user);
+        Task<GetFormListResponse> GetCompletedFormsAsync(Guid userGuid, int? contactId);		
+
+        Task<GetFormListResponse> GetIncompleteFormsAsync(Guid userGuid, int? contactId);
+		Task<GetFormListResponse> GetIncompleteFormsForDashboardAsync(Guid userGuid, int? contactId);
+
+		Task<GetFormListResponse> GetMyFormsAsync(Guid userGuid);
+
+		Task<GetFormListResponse> GetAdminFormsAsync(Guid userGuid);
+
+		Task<GetFormListResponse> GetHistoricAdminFormsAsync(Guid userGuid);
+
+        Task<GetFormTypeAdminListResponse> GetAdminFormTypesAsync(Guid userId);
+        Task<SavedFormTypeListResponse> SaveAdminFormTypesAsync(SaveFormTypeListRequest request, PortalUser cffUser);
+        Task<GetFormListResponse> GetRecentFormListAsync(Guid userGuid, int? contactId);
+        Task<GetFormTypeListResponse> GetAdvertisedFormTypeListAsync();
+        Task<SubmittedFormResponse> SubmitFormAsync(SubmitFormRequest submitRequest, PortalUser user);
+        Task<UnsubmittedFormResponse> UnsubmitFormAsync(int formId, PortalUser user);
+        Task<GetFormResponse> EditAsync(int formId, Guid userGuid);
+		Task<string> GetExternalVariableData(int formId);
+		bool ContactHasFormIdAccess(int formId, string guid, int? contactId, bool isInQualifiedFormGroup);
+        Task ExtendLockExpirationAsync(int formId, Guid userGuid);
+
+		bool ContactHasPublicFormIdAccess(int formId, string guid);
+        Task DeleteAsync(int formId, Guid guid);        
+        Task ChangeStatus(int formId, int newStatusId, PortalUser user);
+    }
+}

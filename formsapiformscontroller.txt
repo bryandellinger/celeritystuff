@@ -1,0 +1,135 @@
+using CFF.FormCentral.Business.Services.Interfaces;
+using CFF.FormCentral.Contract.Requests;
+using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Threading.Tasks;
+
+namespace CFF.FormCentral.Responder.Api.Controllers
+{
+    [Produces("application/json")]
+    [Route("api/[controller]")]
+    public class FormsController : IdentityController
+    {
+        private readonly IFormService _formService;
+        private readonly IQuestionResponsePersister _questionAnswerService;
+        private readonly IFormProgressService _formProgressService;
+
+        public FormsController(IFormService formService, IQuestionResponsePersister questionAnswerService, IFormProgressService formProgressService)
+        {
+            _formService = formService;
+            _questionAnswerService = questionAnswerService;
+            _formProgressService = formProgressService;
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> Get(int formId)
+        {
+            var response = await _formService.GetAsync(formId);
+            return Ok(response);
+        }
+
+        [HttpGet("edit")]
+        public async Task<IActionResult> Edit(int formId)
+        {
+            var response = await _formService.EditAsync(formId, Guid.Parse(CffUser.NameIdentitifier));
+            return Ok(response);
+        }
+
+        [HttpDelete("delete")]
+        public async Task<IActionResult> Delete(int formId)
+        {
+            await _formService.DeleteAsync(formId, Guid.Parse(CffUser.NameIdentitifier));
+            return Ok();
+        }
+
+        [HttpGet("incomplete")]
+        public async Task<IActionResult> Incomplete()
+        {
+            var response = await _formService.GetIncompleteFormsAsync(Guid.Parse(CffUser.NameIdentitifier), CffUser.ContactId);
+            return Ok(response);
+        }
+
+        [HttpGet("completed")]
+        public async Task<IActionResult> Completed()
+        {
+            var response = await _formService.GetCompletedFormsAsync(Guid.Parse(CffUser.NameIdentitifier), CffUser.ContactId);
+            return Ok(response);
+        }
+
+        [HttpGet("my")]
+        public async Task<IActionResult> My()
+        {
+            var response = await _formService.GetMyFormsAsync(Guid.Parse(CffUser.NameIdentitifier));
+            return Ok(response);
+        }
+
+        [HttpGet("recent")]
+        public async Task<IActionResult> Recent()
+        {
+            var response = await _formService.GetRecentFormListAsync(Guid.Parse(CffUser.NameIdentitifier), CffUser.ContactId);
+            return Ok(response);
+        }
+
+        [HttpGet("advertised")]
+        public async Task<IActionResult> Advertised()
+        {
+            var response = await _formService.GetAdvertisedFormTypeListAsync();
+            return Ok(response);
+        }
+
+        [HttpGet("percentagecomplete")]
+        public async Task<IActionResult> PercentageCompleted(int formId)
+        {
+            var response = await _formProgressService.GetPercentageComplete(formId);
+            return Ok(response);
+        }
+
+        [HttpPost("start")]
+        public async Task<IActionResult> Start([FromBody]StartFormRequest createRequest)
+        {
+            var response = await _formService.StartNewFormAsync(createRequest, CffUser);
+            return Ok(response);
+        }
+
+        [HttpPost("save")]
+        public async Task<IActionResult> SaveAnswers([FromBody]SaveFormRequest saveRequest)
+        {
+            var response = await _questionAnswerService.SaveAnswersAsync(saveRequest);
+            return Ok(response);
+        }
+
+        [HttpPost("submit")]
+        public async Task<IActionResult> Submit([FromBody]SubmitFormRequest submitRequest)
+        {
+            var response = await _formService.SubmitFormAsync(submitRequest, CffUser);
+            return Ok(response);
+        }
+
+        [HttpPost("unsubmit")]
+        public async Task<IActionResult> Unsubmit(int formId)
+        {
+            var response = await _formService.UnsubmitFormAsync(formId, CffUser);
+            return Ok(response);
+        }
+
+        [HttpPut("changestatus")]
+        public async Task<IActionResult> ChangeStatus(int formId, int newStatusId)
+        {
+            await _formService.ChangeStatus(formId, newStatusId, CffUser);
+            return Ok();
+        }
+
+		[HttpPost("completeallacceptedforms")]
+		public async Task<IActionResult> CompleteAllAcceptedForms ([FromBody]int[] listOfFormIds )
+		{
+			const int CompletedStatusId = 9;
+
+			foreach(var formId in listOfFormIds)
+			{
+				await _formService.ChangeStatus(formId, CompletedStatusId, CffUser);
+			}
+
+			return Ok();
+		}
+    }
+}

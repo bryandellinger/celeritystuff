@@ -1,0 +1,48 @@
+using CFF.CareCenterPortal.Forms.Models.Forms;
+using CFF.FormCentral.Contract.Requests;
+using CFF.FormCentral.Contract.Responses;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
+namespace CFF.CareCenterPortal.Forms.Business.Services.FormCentral
+{
+    public interface IFormService
+    {
+        Task<int> StartAsync(StartFormRequest formTypeId);
+        Task<FormViewModel> GetAsync(int formId, Guid userGuid);
+        Task<FormViewModel> EditAsync(int formId, Guid userGuid);
+
+        Task<List<FormSummaryBaseViewModel>> GetFormQueueAsync(Guid userGuid);
+
+        Task<List<MyFormSummaryViewModel>> GetMyFormsAsync(Guid userGuid);
+
+        Task<List<FormSummaryBaseViewModel>> GetHistoricFormsAsync();
+
+        Task<SavedFormResponse> SaveAsync(SaveFormRequest request);
+        Task<int> GetPercentageCompleteAsync(int formId);
+        Task<List<DashboardFormListViewModel>> GetRecentFormListAsync();
+        Task<FormReviewViewModel> GetFormReviewAsync(int formId);
+        Task<SubmittedFormResponse> SubmitAsync(SubmitFormRequest formId);
+        Task<UnsubmittedFormResponse> UnsubmitAsync(int formId);
+
+        Task<FormPrintoutViewModel> GetFormPrintoutDataAsync(int formId);
+        Task DeleteFormAsync(int formId);
+        Task ChangeStatus(int formId, int id);
+
+        Task<List<FormSummaryBaseViewModel>> GetAdminFormsListAsync();
+
+        Task<List<FormSummaryBaseViewModel>> GetHistoricAdminFormsListAsync();
+
+        Task<FormTypeAdminViewModel> GetEditFormTypeListAsync();
+        Task<SavedFormTypeListResponse> SaveAdminFormTypeListAsync(FormTypeAdminViewModel formTypeList);
+
+        Task<bool> CanEditFormTypes();
+        Task<bool> HasFormListAdminAccess();
+
+        Task<string> GetExternalVariables(int formId);
+        Task CompleteAllAcceptedForms(int[] listOfFormIds);
+
+        Task<List<FormListBeginNewFormViewModel>> GetFormListStartableFormsAsync();
+    }
+}
